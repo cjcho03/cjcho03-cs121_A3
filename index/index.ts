@@ -1,11 +1,12 @@
 import type { BunFile } from "bun";
 import HTMLCleaner, { getTokenFrequency } from "./html-tokenizer";
 import type { WebsiteFile } from "./get-website";
-import DoubleMap from "../lib/double-map";
+import DoubleMap from "./lib/double-map";
+import { type TokenFrequencyType } from "./html-tokenizer";
 
 interface IndexEntry {
 	documentId: number,
-	score: number
+	occurrences: TokenFrequencyType
 }
 
 type IndexType = Map<string, IndexEntry[]>;
@@ -33,12 +34,12 @@ class Index {
 			// Create the index entry structure and add it to the index
 			const indexEntry = {
 				documentId: documentId,
-				score: frequency
+				occurrences: frequency
 			};
 			const currentEntry = this.index.get(token);
-			if (currentEntry)				
+			if (currentEntry)
 				currentEntry.push(indexEntry);
-			else 
+			else
 				this.index.set(token, [indexEntry]);
 		}
 	}
