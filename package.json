@@ -1,0 +1,17 @@
+{
+  "name": "makeindex",
+  "module": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "type": "module",
+  "dependencies": {
+    "@types/graceful-fs": "^4.1.9",
+    "bun-domparser": "tomashubelbauer/bun-domparser",
+    "graceful-fs": "^4.2.11",
+    "stemmer": "^2.0.1"
+  }
+}
