@@ -18,9 +18,9 @@ await index.saveIndex();
 // 1. Number of indexed documents
 // 2. Number of unique words
 // 3. Total size of the index on disk (kB)
-console.log(numberOfIndexedDocuments());
-console.log(numberOfUniqueWords());
-console.log(await sizeOfIndex());
+console.log(`Indexed documents: ${numberOfIndexedDocuments()}`);
+console.log(`Unique words: ${numberOfUniqueWords()}`);
+console.log(`Index size: ${await sizeOfIndex()} kB`);
 // 1. 55393
 // 2. 270274
 // 3. 64475.3603515625
