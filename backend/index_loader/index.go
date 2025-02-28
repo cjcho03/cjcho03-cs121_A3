@@ -1,8 +1,8 @@
-package index
+package index_loader
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"strconv"
 )
 
@@ -17,7 +17,7 @@ type IndexMap map[string][]Posting
 
 // LoadIndex reads the inverted index from a JSON file.
 func LoadIndex(filename string) (IndexMap, error) {
-	bytes, err := ioutil.ReadFile(filename)
+	bytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func LoadIndex(filename string) (IndexMap, error) {
 // LoadDocs reads the document store from a JSON file and inverts the mapping
 // to return a map from document IDs to URLs.
 func LoadDocs(filename string) (map[int]string, error) {
-	bytes, err := ioutil.ReadFile(filename)
+	bytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
