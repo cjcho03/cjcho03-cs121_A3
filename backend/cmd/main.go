@@ -1,48 +1,47 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 
 	"backend/index_loader"
 	"backend/search"
 )
 
 func main() {
-	// Load the document store from the indexdir folder.
 	docs, err := index_loader.LoadDocs("indexdir/docs.json")
 	if err != nil {
 		log.Fatalf("Error loading docs: %v", err)
 	}
-
-	// Load the index directory from the indexdir folder.
-	indexDir, err := index_loader.LoadIndexDir("indexdir/index_dir.json")
+	idxDir, err := index_loader.LoadIndexDir("indexdir/index_dir.json")
 	if err != nil {
 		log.Fatalf("Error loading index directory: %v", err)
 	}
+	search.SetDataPartitioned(docs, len(docs), idxDir)
 
-	// Initialize the search module for partitioned indexes.
-	search.SetDataPartitioned(docs, len(docs), indexDir)
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("Enter query (or 'exit'): ")
+		line, _ := reader.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if line == "exit" {
+			break
+		}
 
-	// Define some test queries.
-	queries := []string{
-		"cristina lopes",
-		"machine learning",
-		"ACM",
-		"master of software engineering",
-	}
-
-	// Process each query and print the results.
-	for _, query := range queries {
-		fmt.Printf("Query: %s\n", query)
-		results := search.ProcessQuery(query)
+		results := search.ProcessQuery(line)
 		if len(results) == 0 {
-			fmt.Println("  No results found.")
+			fmt.Println("No results found.")
 		} else {
-			for _, res := range results {
-				fmt.Printf("  URL: %s, Score: %.4f\n", res.URL, res.Score)
+			for i, r := range results {
+				fmt.Printf("%d. URL: %s (Score: %.4f)\n", i+1, r.URL, r.Score)
 			}
 		}
-		fmt.Println()
+		fmt.Println("---------------")
 	}
 }

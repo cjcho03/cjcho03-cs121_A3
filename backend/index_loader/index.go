@@ -19,55 +19,53 @@ type Posting struct {
 	Occurrences Occurrence `json:"occurrences"`
 }
 
-// IndexMap maps a token to its list of postings.
+// IndexMap maps a token to its postings.
 type IndexMap map[string][]Posting
 
-// IndexDir represents the structure of your index directory JSON file.
-// It contains threshold keys and the corresponding leaf index file names.
+// IndexDir is the "root" index file: threshold keys + corresponding leaf filenames.
 type IndexDir struct {
 	Keys       []string `json:"keys"`
 	IndexFiles []string `json:"indexFiles"`
 }
 
-// LoadIndexDir loads the index directory from a JSON file (e.g., "indexdir/index_dir.json").
+// LoadIndexDir loads the partition "root" (index_dir.json).
 func LoadIndexDir(filename string) (*IndexDir, error) {
-	bytes, err := os.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 	var dir IndexDir
-	if err := json.Unmarshal(bytes, &dir); err != nil {
+	if err := json.Unmarshal(data, &dir); err != nil {
 		return nil, err
 	}
 	return &dir, nil
 }
 
-// LoadIndex reads one of the leaf inverted index files (e.g., "indexdir/index_0.json").
+// LoadIndex reads a leaf index JSON (e.g., indexdir/index_0.json).
 func LoadIndex(filename string) (IndexMap, error) {
-	bytes, err := os.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 	var idx IndexMap
-	if err := json.Unmarshal(bytes, &idx); err != nil {
+	if err := json.Unmarshal(data, &idx); err != nil {
 		return nil, err
 	}
 	return idx, nil
 }
 
-// LoadDocs reads the document store from a JSON file (e.g., "indexdir/docs.json") and
-// returns a map from document IDs to URLs.
+// LoadDocs reads docs.json => map[docID] = url.
 func LoadDocs(filename string) (map[int]string, error) {
-	bytes, err := os.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	var rawDocs map[string]interface{}
-	if err := json.Unmarshal(bytes, &rawDocs); err != nil {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 	docs := make(map[int]string)
-	for url, val := range rawDocs {
+	for url, val := range raw {
 		switch v := val.(type) {
 		case float64:
 			docs[int(v)] = url
@@ -81,14 +79,13 @@ func LoadDocs(filename string) (map[int]string, error) {
 	return docs, nil
 }
 
-// GetIndexFileForToken determines which leaf index file should contain postings for the given token.
-// It uses the keys from the IndexDir to decide the correct file, then prepends the folder name.
+// GetIndexFileForToken picks which leaf file a token is in (based on Keys).
 func GetIndexFileForToken(token string, dir *IndexDir) string {
 	for i, key := range dir.Keys {
 		if token < key {
 			return "indexdir/" + dir.IndexFiles[i]
 		}
 	}
-	// If token >= all keys, return the last file.
+	// token >= all keys => last file
 	return "indexdir/" + dir.IndexFiles[len(dir.IndexFiles)-1]
 }
