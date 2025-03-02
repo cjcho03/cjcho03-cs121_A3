@@ -176,6 +176,7 @@ dist
 
 developer/
 index.json
+index_*.json
 docs.json
 
 bun.lockb

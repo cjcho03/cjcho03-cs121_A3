@@ -59,7 +59,7 @@ const HTMLCleaner = {
 			})
 			.on("*", {
 				text(element) {
-					const text = element.text.toLowerCase().trim();
+					const text = element.text;
 					if (text) tokens.push(...tokenize(text));
 				}
 			}).transform(htmlString);
@@ -67,10 +67,10 @@ const HTMLCleaner = {
 	}
 };
 
-function tokenize(textContent: string, options?: TokenizerOptions): TokenType[] {
+export function tokenize(textContent: string, options?: TokenizerOptions): TokenType[] {
 	const isHeader = options?.isHeader || false;
 	const isEmphasized = options?.isEmphasized || false;
-	return textContent.split(REG_IS_ALPHANUMERIC)
+	return textContent.toLowerCase().trim().split(REG_IS_ALPHANUMERIC)
 		.map(token => stemmer(token))
 		.filter(token => token.length > 0)
 		.map(token => ({
