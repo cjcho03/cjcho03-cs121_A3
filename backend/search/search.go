@@ -1,7 +1,6 @@
 package search
 
 import (
-	"log"
 	"math"
 	"sort"
 	"sync"
@@ -11,12 +10,10 @@ import (
 )
 
 var (
-	// Partitioned data
 	DocIDToURLPartitioned map[int]string
 	TotalDocsPartitioned  int
 	IndexDirData          *index_loader.IndexDir
 
-	// Cached leaf files
 	indexCache = make(map[string]index_loader.IndexMap)
 	cacheMutex sync.Mutex
 )
@@ -31,24 +28,20 @@ func SetDataPartitioned(docs map[int]string, total int, dir *index_loader.IndexD
 // getPostingsForToken loads/returns postings for a given token.
 func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
 	if IndexDirData == nil {
-		log.Println("[search] IndexDirData is nil; did you call SetDataPartitioned?")
+		// Return false if not initialized
 		return nil, false
 	}
 
-	// Which file holds this token?
 	filename := index_loader.GetIndexFileForToken(token, IndexDirData)
 
-	// Check our cache first
 	cacheMutex.Lock()
 	idx, found := indexCache[filename]
 	cacheMutex.Unlock()
 
 	if !found {
-		// Load from disk
 		loadedIdx, err := index_loader.LoadIndex(filename)
 		if err != nil {
-			log.Printf("[search] Error loading index file %s for token '%s': %v",
-				filename, token, err)
+			// If there's an error loading the file, return false
 			return nil, false
 		}
 		cacheMutex.Lock()
@@ -70,14 +63,14 @@ type Result struct {
 // ProcessQuery runs a Boolean AND on all tokens, then ranks docs using tf-idf.
 func ProcessQuery(query string) []Result {
 	if IndexDirData == nil {
-		log.Println("[search] IndexDirData is nil; did you call SetDataPartitioned?")
+		// Not initialized, return nothing
 		return nil
 	}
 
 	// 1) Tokenize
 	rawTokens := utils.Tokenize(query)
 	if len(rawTokens) == 0 {
-		log.Printf("[search] Query %q produced no tokens after tokenization.\n", query)
+		// No tokens after tokenization
 		return nil
 	}
 
@@ -86,43 +79,34 @@ func ProcessQuery(query string) []Result {
 	var queryTokens []string
 	for _, raw := range rawTokens {
 		stemmed := utils.Stem(raw)
-		// Debug print to see raw vs stem
-		log.Printf("[search] Raw token: %q => Stem: %q\n", raw, stemmed)
-
 		queryTokens = append(queryTokens, stemmed)
 		queryFreq[stemmed]++
 	}
-
-	log.Printf("[search] Processing query: %q => tokens: %v\n", query, queryTokens)
 
 	// 3) Boolean AND across tokens
 	docScores := make(map[int]map[string]int)
 	for i, token := range queryTokens {
 		postings, found := getPostingsForToken(token)
 		if !found || len(postings) == 0 {
-			log.Printf("[search] No postings found for token %q => no results.\n", token)
+			// If any token yields no docs, final result is empty
 			return []Result{}
 		}
 
-		// For each doc that has this token, store combined frequencies
 		currentDocs := make(map[int]int)
 		for _, p := range postings {
 			freq := p.Occurrences.TextCount +
 				p.Occurrences.HeaderCount +
 				p.Occurrences.ImportantCount
-
 			if freq > 0 {
 				currentDocs[p.DocumentID] = freq
 			}
 		}
 
 		if i == 0 {
-			// Initialize docScores
 			for docID, freq := range currentDocs {
 				docScores[docID] = map[string]int{token: freq}
 			}
 		} else {
-			// Intersect with existing docs
 			for docID, tokenMap := range docScores {
 				if freq, ok := currentDocs[docID]; ok {
 					tokenMap[token] = freq
@@ -134,19 +118,18 @@ func ProcessQuery(query string) []Result {
 	}
 
 	if len(docScores) == 0 {
-		log.Println("[search] docScores is empty after intersection => no results.")
+		// No docs remain after intersection
 		return []Result{}
 	}
 
 	// 4) Build query vector (tf-idf)
 	queryVec := make(map[string]float64)
 	for token, freq := range queryFreq {
-		postings, _ := getPostingsForToken(token) // already loaded
+		postings, _ := getPostingsForToken(token)
 		df := len(postings)
 		if df == 0 {
 			continue
 		}
-		// IDF
 		idf := math.Log(float64(TotalDocsPartitioned) / float64(df))
 		queryVec[token] = float64(freq) * idf
 	}
