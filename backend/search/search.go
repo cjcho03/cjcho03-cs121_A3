@@ -69,37 +69,37 @@ type Result struct {
 
 // ProcessQuery runs a Boolean AND on all tokens, then ranks docs using tf-idf.
 func ProcessQuery(query string) []Result {
-	// Safety check
 	if IndexDirData == nil {
 		log.Println("[search] IndexDirData is nil; did you call SetDataPartitioned?")
 		return nil
 	}
 
-	// Tokenize + stem
-	tokens := utils.Tokenize(query)
-	if len(tokens) == 0 {
-		log.Printf("[search] Query '%s' produced no tokens after tokenization.\n", query)
+	// 1) Tokenize
+	rawTokens := utils.Tokenize(query)
+	if len(rawTokens) == 0 {
+		log.Printf("[search] Query %q produced no tokens after tokenization.\n", query)
 		return nil
 	}
 
+	// 2) Stem
 	queryFreq := make(map[string]int)
 	var queryTokens []string
-	for _, token := range tokens {
-		stemmed := utils.Stem(token)
+	for _, raw := range rawTokens {
+		stemmed := utils.Stem(raw)
+		// Debug print to see raw vs stem
+		log.Printf("[search] Raw token: %q => Stem: %q\n", raw, stemmed)
+
 		queryTokens = append(queryTokens, stemmed)
 		queryFreq[stemmed]++
 	}
 
 	log.Printf("[search] Processing query: %q => tokens: %v\n", query, queryTokens)
 
-	// Boolean AND across tokens
-	// docScores[docID] = map[token]termFrequency
+	// 3) Boolean AND across tokens
 	docScores := make(map[int]map[string]int)
-
 	for i, token := range queryTokens {
 		postings, found := getPostingsForToken(token)
 		if !found || len(postings) == 0 {
-			// If any token yields no docs, final result is empty
 			log.Printf("[search] No postings found for token %q => no results.\n", token)
 			return []Result{}
 		}
@@ -107,17 +107,10 @@ func ProcessQuery(query string) []Result {
 		// For each doc that has this token, store combined frequencies
 		currentDocs := make(map[int]int)
 		for _, p := range postings {
-			// Instead of just p.Occurrences.TextCount:
 			freq := p.Occurrences.TextCount +
 				p.Occurrences.HeaderCount +
 				p.Occurrences.ImportantCount
 
-			// If you prefer weighting:
-			// freq := (1 * p.Occurrences.TextCount) +
-			//         (2 * p.Occurrences.HeaderCount) +
-			//         (3 * p.Occurrences.ImportantCount)
-
-			// Only store doc if freq > 0
 			if freq > 0 {
 				currentDocs[p.DocumentID] = freq
 			}
@@ -134,19 +127,18 @@ func ProcessQuery(query string) []Result {
 				if freq, ok := currentDocs[docID]; ok {
 					tokenMap[token] = freq
 				} else {
-					delete(docScores, docID) // doc didn't have this token => drop it
+					delete(docScores, docID)
 				}
 			}
 		}
 	}
 
-	// If docScores is empty after intersection => no results
 	if len(docScores) == 0 {
 		log.Println("[search] docScores is empty after intersection => no results.")
 		return []Result{}
 	}
 
-	// Build query vector (tf-idf)
+	// 4) Build query vector (tf-idf)
 	queryVec := make(map[string]float64)
 	for token, freq := range queryFreq {
 		postings, _ := getPostingsForToken(token) // already loaded
@@ -154,18 +146,19 @@ func ProcessQuery(query string) []Result {
 		if df == 0 {
 			continue
 		}
+		// IDF
 		idf := math.Log(float64(TotalDocsPartitioned) / float64(df))
 		queryVec[token] = float64(freq) * idf
 	}
 
-	// Query vector norm
+	// 5) Query vector norm
 	var queryNorm float64
 	for _, weight := range queryVec {
 		queryNorm += weight * weight
 	}
 	queryNorm = math.Sqrt(queryNorm)
 
-	// Compute doc scores
+	// 6) Compute doc scores
 	var results []Result
 	for docID, freqs := range docScores {
 		var dot, docNorm float64
@@ -194,12 +187,12 @@ func ProcessQuery(query string) []Result {
 		})
 	}
 
-	// Sort descending by score
+	// 7) Sort descending by score
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
 	})
 
-	// Return top 5
+	// 8) Return top 5
 	if len(results) > 5 {
 		results = results[:5]
 	}
