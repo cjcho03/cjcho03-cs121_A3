@@ -3,6 +3,7 @@ import HTMLCleaner, { getTokenFrequency } from "./html-tokenizer";
 import type { WebsiteFile } from "./get-website";
 import DoubleMap from "./lib/double-map";
 import { type TokenFrequencyType } from "./html-tokenizer";
+import { simhashStoreAddIfNew, simhashString } from "./lib/simhash";
 
 interface IndexEntry {
 	documentId: number,
@@ -17,8 +18,8 @@ interface DirectoryEntry {
 type IndexType = Map<string, IndexEntry[]>;
 type DocstoreType = DoubleMap<string, number>;
 
-// Will this eventually need to become a B+ tree?
-// We'll see
+const LOW_INFORMATION_DOC_THRESHOLD = 10;
+
 class Index {
 	id: number;
 	tokens: string[];
@@ -117,10 +118,13 @@ export class IndexRouter {
 		const documentId = this.documentStore.size;
 		// Skip if the document is already parsed (in the document store)
 		if (this.documentStore.getOne(documentName)) return;
-		// Register this document into the docstore
+		// Skip if the document is similar to one already parsed
+		if (!simhashStoreAddIfNew(simhashString(websiteFile.content))) return;
+		// Register this document into the docstore and hashstore
 		this.documentStore.set(documentName, documentId);
 		// Tokenize the web page and get the token frequency
 		const tokenFrequencies = getTokenFrequency(HTMLCleaner.tokenize(HTMLCleaner.clean(websiteFile.content)));
+		if (tokenFrequencies.size < LOW_INFORMATION_DOC_THRESHOLD) return;
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
