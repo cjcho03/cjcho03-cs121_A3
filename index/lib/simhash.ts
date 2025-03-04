@@ -3,8 +3,6 @@ const FRAGMENT_SIZE = 2;
 
 type THash = bigint;
 
-const simhashStore = new Set<bigint>();
-
 export function simhashString(text: string): THash {
 	const hashVector = new Array(NUMBER_OF_BITS).fill(0);
 	const fragments = makeFragments(text);
@@ -36,7 +34,7 @@ function makeFragments(text: string) {
 	return result;
 }
 
-function simhashSimilar(rHash: THash, lHash: THash, simThreshold = 0.75) {
+export function simhashSimilar(rHash: THash, lHash: THash, simThreshold = 0.75) {
 	let numberOfDifferentBits = 0;
 	let xorResult = rHash ^ lHash;
 	while (xorResult > 0n) {
@@ -47,15 +45,4 @@ function simhashSimilar(rHash: THash, lHash: THash, simThreshold = 0.75) {
 	}
 	const similarity = 1 - (numberOfDifferentBits / NUMBER_OF_BITS);
 	return similarity >= simThreshold;
-}
-
-export function simhashStoreAddIfNew(hashValue: THash): boolean {
-	for (const storedHash of simhashStore) {
-		if (simhashSimilar(hashValue, storedHash)) {
-			simhashStore.add(hashValue);
-			return false;
-		}
-	}
-	simhashStore.add(hashValue);
-	return true;
 }

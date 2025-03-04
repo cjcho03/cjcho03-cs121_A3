@@ -3,7 +3,8 @@ import HTMLCleaner, { getTokenFrequency } from "./html-tokenizer";
 import type { WebsiteFile } from "./get-website";
 import DoubleMap from "./lib/double-map";
 import { type TokenFrequencyType } from "./html-tokenizer";
-import { simhashStoreAddIfNew, simhashString } from "./lib/simhash";
+import { simhashString } from "./lib/simhash";
+import simhashStore from "./lib/simhash-store";
 
 interface IndexEntry {
 	documentId: number,
@@ -119,12 +120,15 @@ export class IndexRouter {
 		// Skip if the document is already parsed (in the document store)
 		if (this.documentStore.getOne(documentName)) return;
 		// Skip if the document is similar to one already parsed
-		if (!simhashStoreAddIfNew(simhashString(websiteFile.content))) return;
-		// Register this document into the docstore and hashstore
-		this.documentStore.set(documentName, documentId);
+		const websiteHash = simhashString(websiteFile.content);
+		if (simhashStore.isDuplicate(websiteHash)) return;
+		simhashStore.add(websiteHash);
 		// Tokenize the web page and get the token frequency
 		const tokenFrequencies = getTokenFrequency(HTMLCleaner.tokenize(HTMLCleaner.clean(websiteFile.content)));
+		// Skip if the document doesn't have much information
 		if (tokenFrequencies.size < LOW_INFORMATION_DOC_THRESHOLD) return;
+		// Register this document into the docstore and hashstore
+		this.documentStore.set(documentName, documentId);
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
