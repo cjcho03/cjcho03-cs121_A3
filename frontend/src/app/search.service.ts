@@ -11,7 +11,10 @@ export class SearchService {
 
   doSearch(searchString: string) {
     this.searchString = searchString;
-    this.router.navigate(['/search']);
+    this.router.navigateByUrl('/', { skipLocationChange: true }).then(() => {
+      this.router.navigate(["/search"], {
+        onSameUrlNavigation: 'reload'
+      });
+    });
   }
-
 }
