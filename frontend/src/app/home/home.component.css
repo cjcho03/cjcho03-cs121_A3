@@ -1,0 +1,14 @@
+:host {
+  margin: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 75vh;
+  flex-direction: column;
+}
+
+h1 {
+    color: var(--header-color);
+    text-align: center;
+    font-size: 4em;
+}

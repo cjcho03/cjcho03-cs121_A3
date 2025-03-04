@@ -179,3 +179,9 @@ index.json
 docs.json
 
 bun.lockb
+
+.vs/
+.vscode/
+
+obj/
+.editorconfig

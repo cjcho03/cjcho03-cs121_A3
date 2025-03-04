@@ -1,0 +1,21 @@
+.search-bar {
+  margin: 1rem;
+  position: relative;
+  display: inline-block;
+}
+
+.search-icon::after {
+  content: "\1F50D";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+input {
+  margin-left: 2rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  width: 32rem;
+  height: 2rem;
+}
