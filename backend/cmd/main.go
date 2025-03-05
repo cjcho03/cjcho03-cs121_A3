@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	// Load docs + index_dir
+	// 1) Load docs and index directory.
 	docs, err := index_loader.LoadDocs("indexdir/docs.json")
 	if err != nil {
 		log.Fatalf("Error loading docs: %v", err)
@@ -21,10 +21,10 @@ func main() {
 		log.Fatalf("Error loading index directory: %v", err)
 	}
 
-	// 2) Initialize the search module
+	// 2) Initialize the search module with docs as DocEntry objects.
 	search.SetDataPartitioned(docs, len(docs), idxDir)
 
-	// 3) Register a single endpoint at /search
+	// 3) Register a single endpoint at /search.
 	http.HandleFunc("/search", handlers.SearchHandler)
 
 	port := os.Getenv("PORT")
