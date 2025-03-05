@@ -3,9 +3,8 @@ const FRAGMENT_SIZE = 2;
 
 type THash = bigint;
 
-export function simhashString(text: string): THash {
+export function simhashTokens(fragments: string[]): THash {
 	const hashVector = new Array(NUMBER_OF_BITS).fill(0);
-	const fragments = makeFragments(text);
 
 	for (const fragment of fragments) {
 		const hashedFragment: bigint = Bun.hash.murmur64v2(fragment);
@@ -27,22 +26,14 @@ export function simhashString(text: string): THash {
 	return fingerprint;
 }
 
+export function simhashString(text: string): THash {
+	const fragments = makeFragments(text);
+	return simhashTokens(fragments);
+}
+
 function makeFragments(text: string) {
 	let result: string[] = [];
 	for (let i = 0; i < Math.max(text.length - FRAGMENT_SIZE + 1, 1); ++i)
 		result.push(text.slice(i, i + FRAGMENT_SIZE));
 	return result;
-}
-
-export function simhashSimilar(rHash: THash, lHash: THash, simThreshold = 0.75) {
-	let numberOfDifferentBits = 0;
-	let xorResult = rHash ^ lHash;
-	while (xorResult > 0n) {
-		if (xorResult & 1n) {
-			++numberOfDifferentBits;
-		}
-		xorResult >>= 1n;
-	}
-	const similarity = 1 - (numberOfDifferentBits / NUMBER_OF_BITS);
-	return similarity >= simThreshold;
 }

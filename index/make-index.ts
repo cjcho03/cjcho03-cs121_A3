@@ -11,6 +11,8 @@ if (!Bun.argv.includes("--restart"))
 // Retrieve the websites
 const websites = await getWebsites();
 // Add a website to the index
+// for (let i = 0; i < 10; ++i) {
+// const website = websites[i];
 for (const website of websites) {
 	await index.addDocument(website);
 }

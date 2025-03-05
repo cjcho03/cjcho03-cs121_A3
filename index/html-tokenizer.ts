@@ -26,22 +26,27 @@ const HTMLCleaner = {
 	getTitle(htmlString: string) {
 		let result = "";
 		new HTMLRewriter()
-			.on("title", {
+			.on("title, h1", {
 				text(title) {
-					console.log("on title text")
 					if (!result) {
-						result = title.text;
+						result = title.text.replaceAll("\n", "").trim();
 					}
 				}
 			})
-			.on("h1, h2, h3, h4, h5, h6", {
-				text(heading) {
-					console.log("on heading text")
-					if (!result) {
-						result = heading.text;
+			.transform(htmlString);
+		return result;
+	},
+	getDescription(htmlString: string) {
+		let result = "";
+		new HTMLRewriter()
+			.on("meta", {
+				element(meta) {
+					if (meta.getAttribute("name") === "description") {
+						result = meta.getAttribute("content") || "";
 					}
 				}
-			}).transform(htmlString);
+			})
+			.transform(htmlString);
 		return result;
 	},
 	clean(htmlString: string) {
@@ -121,6 +126,39 @@ export function getTokenFrequency(tokens: TokenType[]): TokenFrequencyMap {
 		result.set(token.value, frequency);
 	}
 	return result;
+}
+
+export async function isHtml(htmlString: string): Promise<boolean> {
+	// Check for HTML tags
+	const htmlIndicators = [
+		/<html/i,
+		/<body/i,
+		/<div/i,
+		/<p>/i,
+		/<script/i,
+		/<style/i
+	];
+
+	const hasHtmlPatterns = htmlIndicators.some(pattern =>
+		pattern.test(htmlString)
+	);
+	if (hasHtmlPatterns) {
+		return true;
+	}
+	return false;
+}
+
+export function reencodeString(inputString: string, encoding = "utf-8"): string {
+	if (encoding === "utf-8")
+		return inputString;
+	try {
+		const encoder = new TextEncoder();
+		const decoder = new TextDecoder(encoding);
+		return decoder.decode(encoder.encode(inputString));
+	}
+	catch (e) {
+		return inputString;
+	}
 }
 
 export default HTMLCleaner;

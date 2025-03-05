@@ -1,9 +1,9 @@
 import type { BunFile } from "bun";
-import HTMLCleaner, { getTokenFrequency } from "./html-tokenizer";
+import HTMLCleaner, { getTokenFrequency, isHtml, reencodeString } from "./html-tokenizer";
 import type { WebsiteFile } from "./get-website";
 import DoubleMap from "./lib/double-map";
 import { type TokenFrequencyType } from "./html-tokenizer";
-import { simhashString } from "./lib/simhash";
+import { simhashString, simhashTokens } from "./lib/simhash";
 import simhashStore from "./lib/simhash-store";
 
 interface IndexEntry {
@@ -16,8 +16,14 @@ interface DirectoryEntry {
 	indexFiles: string[]
 }
 
+interface TitleType {
+	title: string,
+	description?: string
+}
+
 type IndexType = Map<string, IndexEntry[]>;
 type DocstoreType = DoubleMap<string, number>;
+type TitleStoreType = Map<number, TitleType>;
 
 const LOW_INFORMATION_DOC_THRESHOLD = 10;
 
@@ -62,7 +68,7 @@ class Index {
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
 			// Create the index entry structure and add it to the index
-			this.insertToken(token, { documentId: documentId, occurrences: frequency});
+			this.insertToken(token, { documentId: documentId, occurrences: frequency });
 		}
 	}
 
@@ -90,8 +96,7 @@ class Index {
 			return 0;
 		});
 
-		return await Bun.write(indexFileName(this.id), JSON.stringify(Object.fromEntries(sortedIndex)))
-			+ await Bun.write("docs.json", JSON.stringify(Object.fromEntries(this.documentStore.mapOne)));
+		return await Bun.write(indexFileName(this.id), JSON.stringify(Object.fromEntries(sortedIndex)));
 	}
 
 	async loadIndex() {
@@ -106,6 +111,7 @@ export class IndexRouter {
 	childIndexes: Index[];
 	keys: string[];
 	documentStore: DocstoreType = new DoubleMap();
+	titleStore: TitleStoreType = new Map();
 
 	constructor(numberOfIndexes = 1) {
 		this.childIndexes = [];
@@ -118,24 +124,38 @@ export class IndexRouter {
 	async addDocument(file: BunFile): Promise<void> {
 		const websiteFile: WebsiteFile = await file.json();
 		const documentName = websiteFile.url;
+
 		const documentId = this.documentStore.size;
+		const documentContent = reencodeString(websiteFile.content, websiteFile.encoding);
+		const documentTitle = HTMLCleaner.getTitle(documentContent);
+		const documentDescription = HTMLCleaner.getDescription(documentContent);
+
+		// Skip if the document is not valid HTML
+		if (!await isHtml(documentContent)) return;
+
 		// Skip if the document is already parsed (in the document store)
 		if (this.documentStore.getOne(documentName)) return;
+		// Tokenize the web page and get the token frequency
+		const tokens = HTMLCleaner.tokenize(HTMLCleaner.clean(documentContent));
 		// Skip if the document is similar to one already parsed
-		const websiteHash = simhashString(websiteFile.content);
+		const websiteHash = simhashTokens(tokens.map(token => token.value));
 		if (simhashStore.isDuplicate(websiteHash)) return;
 		simhashStore.add(websiteHash);
-		// Tokenize the web page and get the token frequency
-		const tokenFrequencies = getTokenFrequency(HTMLCleaner.tokenize(HTMLCleaner.clean(websiteFile.content)));
+		const tokenFrequencies = getTokenFrequency(tokens);
 		// Skip if the document doesn't have much information
 		if (tokenFrequencies.size < LOW_INFORMATION_DOC_THRESHOLD) return;
 		// Register this document into the docstore and hashstore
 		this.documentStore.set(documentName, documentId);
+		// Add the document name if applicable
+		this.titleStore.set(documentId, {
+			title: documentTitle,
+			description: documentDescription
+		});
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
 			// Create the index entry structure and add it to the appropriate index
-			this.addToken(token, {documentId: documentId, occurrences: frequency});
+			this.addToken(token, { documentId: documentId, occurrences: frequency });
 		}
 	}
 
@@ -251,7 +271,18 @@ export class IndexRouter {
 			keys: [...this.keys],
 			indexFiles: [...this.childIndexes.map(c => indexFileName(c.id))]
 		}));
-		sum += await Bun.write("docs.json", JSON.stringify(Object.fromEntries(this.documentStore.mapOne)));
+
+		sum += await Bun.write("docs.json", JSON.stringify(
+			Object.fromEntries(
+				this.documentStore.mapTwo.keys().map(key => {
+					return [key, {
+						url: this.documentStore.getTwo(key),
+						title: this.titleStore.get(key)?.title,
+						description: this.titleStore.get(key)?.description
+					}]
+				})
+			)
+		));
 		return sum;
 	}
 
