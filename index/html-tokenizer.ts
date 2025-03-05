@@ -23,6 +23,27 @@ export interface TokenFrequencyType {
 export type TokenFrequencyMap = Map<string, TokenFrequencyType>;
 
 const HTMLCleaner = {
+	getTitle(htmlString: string) {
+		let result = "";
+		new HTMLRewriter()
+			.on("title", {
+				text(title) {
+					console.log("on title text")
+					if (!result) {
+						result = title.text;
+					}
+				}
+			})
+			.on("h1, h2, h3, h4, h5, h6", {
+				text(heading) {
+					console.log("on heading text")
+					if (!result) {
+						result = heading.text;
+					}
+				}
+			}).transform(htmlString);
+		return result;
+	},
 	clean(htmlString: string) {
 		return new HTMLRewriter()
 			.on("script", {

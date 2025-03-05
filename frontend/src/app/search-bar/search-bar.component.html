@@ -1,0 +1,4 @@
+<div class="search-bar">
+  <input type="search" [(ngModel)]="searchString" name="searchString" placeholder="Search UCI" (keyup.enter)="submitSearch()" />
+  <div class="search-icon" (click)="submitSearch()"></div>
+</div>

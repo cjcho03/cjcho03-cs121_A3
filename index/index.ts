@@ -3,6 +3,8 @@ import HTMLCleaner, { getTokenFrequency } from "./html-tokenizer";
 import type { WebsiteFile } from "./get-website";
 import DoubleMap from "./lib/double-map";
 import { type TokenFrequencyType } from "./html-tokenizer";
+import { simhashString } from "./lib/simhash";
+import simhashStore from "./lib/simhash-store";
 
 interface IndexEntry {
 	documentId: number,
@@ -17,8 +19,8 @@ interface DirectoryEntry {
 type IndexType = Map<string, IndexEntry[]>;
 type DocstoreType = DoubleMap<string, number>;
 
-// Will this eventually need to become a B+ tree?
-// We'll see
+const LOW_INFORMATION_DOC_THRESHOLD = 10;
+
 class Index {
 	id: number;
 	tokens: string[];
@@ -27,7 +29,7 @@ class Index {
 
 	constructor(fragmentId = -1) {
 		this.index = new Map<string, IndexEntry[]>();
-		this.documentStore = new DoubleMap<string, number>;
+		this.documentStore = new DoubleMap<string, number>();
 		this.id = fragmentId;
 		this.tokens = [];
 	}
@@ -48,27 +50,23 @@ class Index {
 
 	async addDocument(file: BunFile): Promise<void> {
 		const websiteFile: WebsiteFile = await file.json();
-		const documentName = websiteFile.url;
+		const documentUrl = websiteFile.url;
 		const documentId = this.documentStore.size;
 		// Skip if the document is already parsed (in the document store)
-		if (this.documentStore.getOne(documentName)) return;
+		if (this.documentStore.getOne(documentUrl)) return;
 		// Register this document into the docstore
-		this.documentStore.set(documentName, documentId);
-		// Tokenize the web page and get the token frequency
+		this.documentStore.set(documentUrl, documentId);
+		// Tokenize the web page and get the token frequency\
 		const tokenFrequencies = getTokenFrequency(HTMLCleaner.tokenize(HTMLCleaner.clean(websiteFile.content)));
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
 			// Create the index entry structure and add it to the index
-			this.insertToken(documentId, frequency, token);
+			this.insertToken(token, { documentId: documentId, occurrences: frequency});
 		}
 	}
 
-	insertToken(documentId: number, frequency: TokenFrequencyType, token: string) {
-		const indexEntry = {
-			documentId: documentId,
-			occurrences: frequency
-		};
+	insertToken(token: string, indexEntry: IndexEntry) {
 		const currentEntry = this.index.get(token);
 		if (currentEntry)
 			currentEntry.push(indexEntry);
@@ -86,7 +84,13 @@ class Index {
 	}
 
 	async saveIndex() {
-		return await Bun.write(indexFileName(this.id), JSON.stringify(Object.fromEntries(this.index)))
+		const sortedIndex = Array.from(this.index.entries()).sort((a, b) => {
+			if (a < b) return -1;
+			if (a > b) return 1;
+			return 0;
+		});
+
+		return await Bun.write(indexFileName(this.id), JSON.stringify(Object.fromEntries(sortedIndex)))
 			+ await Bun.write("docs.json", JSON.stringify(Object.fromEntries(this.documentStore.mapOne)));
 	}
 
@@ -117,29 +121,31 @@ export class IndexRouter {
 		const documentId = this.documentStore.size;
 		// Skip if the document is already parsed (in the document store)
 		if (this.documentStore.getOne(documentName)) return;
-		// Register this document into the docstore
-		this.documentStore.set(documentName, documentId);
+		// Skip if the document is similar to one already parsed
+		const websiteHash = simhashString(websiteFile.content);
+		if (simhashStore.isDuplicate(websiteHash)) return;
+		simhashStore.add(websiteHash);
 		// Tokenize the web page and get the token frequency
 		const tokenFrequencies = getTokenFrequency(HTMLCleaner.tokenize(HTMLCleaner.clean(websiteFile.content)));
+		// Skip if the document doesn't have much information
+		if (tokenFrequencies.size < LOW_INFORMATION_DOC_THRESHOLD) return;
+		// Register this document into the docstore and hashstore
+		this.documentStore.set(documentName, documentId);
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
 			// Create the index entry structure and add it to the appropriate index
-			this.addToken(documentId, frequency, token);
+			this.addToken(token, {documentId: documentId, occurrences: frequency});
 		}
 	}
 
-	addToken(documentId: number, frequency: TokenFrequencyType, token: string) {
-		const indexEntry = {
-			documentId: documentId,
-			occurrences: frequency
-		};
+	addToken(token: string, indexEntry: IndexEntry) {
 		const indexChosen = this.chooseInsertionIndex(token);
 		const indexSmallest = this.smallestIndex();
 		const chosenIndex = this.childIndexes[indexChosen];
 		const smallestIndex = this.childIndexes[indexSmallest];
 		// Insert into the chosen child
-		chosenIndex.insertToken(indexEntry.documentId, indexEntry.occurrences, token);
+		chosenIndex.insertToken(token, indexEntry);
 		// Rebalance the tree
 		const minLength = smallestIndex.index.size;
 		if (chosenIndex.index.size > minLength + 1) {
@@ -206,7 +212,7 @@ export class IndexRouter {
 		const smallestValueOfCurrent = currentIndex.smallestToken;
 		currentIndex.removeToken(smallestValueOfCurrent.token);
 		for (const docEntry of smallestValueOfCurrent.posting) {
-			nextIndex.insertToken(docEntry.documentId, docEntry.occurrences, smallestValueOfCurrent.token);
+			nextIndex.insertToken(smallestValueOfCurrent.token, docEntry);
 		}
 		// Update the key in the top-level
 		const newSmallest = currentIndex.smallestToken;
@@ -226,7 +232,7 @@ export class IndexRouter {
 		const largestValueOfCurrent = currentIndex.largestToken;
 		currentIndex.removeToken(largestValueOfCurrent.token);
 		for (const docEntry of largestValueOfCurrent.posting) {
-			nextIndex.insertToken(docEntry.documentId, docEntry.occurrences, largestValueOfCurrent.token);
+			nextIndex.insertToken(largestValueOfCurrent.token, docEntry);
 		}
 		// Update the key in the top-level
 		const newSmallest = nextIndex.smallestToken;
