@@ -171,6 +171,8 @@ export class IndexRouter {
 				else
 					right = mid;
 			}
+			if (this.keys[left] === token)
+				return left + 1;
 			this.redistributeRight(left + 1, this.keys.length + 1);
 			this.keys[left] = token;
 			return left + 1;
@@ -295,6 +297,7 @@ export class SearchIndex {
 	}
 
 	async query(...tokens: string[]) {
+		console.log(tokens)
 		const startTime = performance.now();
 
 		let result = [];

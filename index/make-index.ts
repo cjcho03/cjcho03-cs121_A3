@@ -2,7 +2,7 @@ import getWebsites from "./get-website"
 import { IndexRouter } from "./index";
 import { RoutedIndexReporter } from "./report"
 
-const NUMBER_OF_INDEX_FRAGMENTS = 5;
+const NUMBER_OF_INDEX_FRAGMENTS = 300;
 
 const index = new IndexRouter(NUMBER_OF_INDEX_FRAGMENTS);
 const reporter = new RoutedIndexReporter(index);
