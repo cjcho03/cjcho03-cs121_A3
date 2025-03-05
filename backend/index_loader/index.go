@@ -6,6 +6,13 @@ import (
 	"strconv"
 )
 
+// DocEntry represents a document entry with three string fields.
+type DocEntry struct {
+	URL         string `json:"url"`
+	Document    string `json:"title"`
+	Description string `json:"description"`
+}
+
 // Occurrence holds frequency counts for a token.
 type Occurrence struct {
 	TextCount      int `json:"textCount"`
@@ -35,6 +42,7 @@ func LoadIndexDir(filename string) (*IndexDir, error) {
 		return nil, err
 	}
 	var dir IndexDir
+	// Parse the JSON data and populate the dir struct with the corresponding values.
 	if err := json.Unmarshal(data, &dir); err != nil {
 		return nil, err
 	}
@@ -54,27 +62,24 @@ func LoadIndex(filename string) (IndexMap, error) {
 	return idx, nil
 }
 
-// LoadDocs reads docs.json => map[docID] = url.
-func LoadDocs(filename string) (map[int]string, error) {
+// LoadDocs reads docs.json and returns a map of document IDs to DocEntry objects.
+func LoadDocs(filename string) (map[int]DocEntry, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	var raw map[string]interface{}
+	// Unmarshal into a temporary map with string keys.
+	var raw map[string]DocEntry
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	docs := make(map[int]string)
-	for url, val := range raw {
-		switch v := val.(type) {
-		case float64:
-			docs[int(v)] = url
-		case string:
-			id, err := strconv.Atoi(v)
-			if err == nil {
-				docs[id] = url
-			}
+	docs := make(map[int]DocEntry)
+	for key, entry := range raw {
+		id, err := strconv.Atoi(key)
+		if err != nil {
+			continue
 		}
+		docs[id] = entry
 	}
 	return docs, nil
 }
