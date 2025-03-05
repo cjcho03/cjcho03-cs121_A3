@@ -304,11 +304,17 @@ export class IndexRouter {
 	}
 }
 
+interface SearchDocStoreEntry {
+	url: string,
+	title: string,
+	description: string
+}
+
 export class SearchIndex {
 	keys: string[];
 	indexes: string[];
 	currentIndex: Index | undefined;
-	documentStore: DocstoreType = new DoubleMap();
+	documentStore: Map<number, SearchDocStoreEntry> = new Map();
 
 	constructor(directory: DirectoryEntry) {
 		this.keys = [...directory.keys];
@@ -345,20 +351,23 @@ export class SearchIndex {
 		);
 		console.log(`${performance.now() - startTime}ms`);
 		queryResult = queryResult.sort((a, b) => a.length - b.length);
-		const documents = new Map<number, number>();
 		return queryResult.reduce((accumulator, currentResult) => accumulator
 			.filter(accIndexEntry =>
 				currentResult.some(curIndexEntry => curIndexEntry.documentId === accIndexEntry.documentId)))
-			.map(accIndexEntry => `URL: ${this.documentStore.getTwo(accIndexEntry.documentId)}, Score: ${accIndexEntry.occurrences.textCount + accIndexEntry.occurrences.headerCount}`)
+			.map(accIndexEntry => `Title: ${this.documentStore.get(accIndexEntry.documentId)?.title}, URL: ${this.documentStore.get(accIndexEntry.documentId)?.url}, Score: ${accIndexEntry.occurrences.textCount + accIndexEntry.occurrences.headerCount}`)
 			.slice(-5).reverse();
 	}
 
 	async loadDocIds() {
 		const docstoreFile = Bun.file("docs.json");
 		const jsonDocs = await docstoreFile.json();
-		this.documentStore = new DoubleMap();
-		for (const [key, value] of new Map<string, string>(Object.entries(jsonDocs))) {
-			this.documentStore.set(key, parseInt(value));
+		this.documentStore = new Map();
+		for (const [key, value] of new Map<string, SearchDocStoreEntry>(Object.entries(jsonDocs))) {
+			this.documentStore.set(parseInt(key), {
+				url: value.url,
+				title: value.title,
+				description: value.description
+			});
 		}
 	}
 
