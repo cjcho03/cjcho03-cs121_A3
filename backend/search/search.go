@@ -10,17 +10,19 @@ import (
 )
 
 var (
-	DocIDToURLPartitioned map[int]string
-	TotalDocsPartitioned  int
-	IndexDirData          *index_loader.IndexDir
+	// Updated to hold DocEntry objects instead of just URL strings.
+	DocIDToDocEntryPartitioned map[int]index_loader.DocEntry
+	TotalDocsPartitioned       int
+	IndexDirData               *index_loader.IndexDir
 
 	indexCache = make(map[string]index_loader.IndexMap)
 	cacheMutex sync.Mutex
 )
 
 // SetDataPartitioned initializes the search module with docs, doc count, and index directory.
-func SetDataPartitioned(docs map[int]string, total int, dir *index_loader.IndexDir) {
-	DocIDToURLPartitioned = docs
+// It now accepts a map[int]index_loader.DocEntry.
+func SetDataPartitioned(docs map[int]index_loader.DocEntry, total int, dir *index_loader.IndexDir) {
+	DocIDToDocEntryPartitioned = docs
 	TotalDocsPartitioned = total
 	IndexDirData = dir
 }
@@ -165,7 +167,7 @@ func ProcessQuery(query string) []Result {
 		}
 
 		results = append(results, Result{
-			URL:   DocIDToURLPartitioned[docID],
+			URL:   DocIDToDocEntryPartitioned[docID].URL,
 			Score: score,
 		})
 	}
