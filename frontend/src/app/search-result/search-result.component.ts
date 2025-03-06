@@ -1,5 +1,5 @@
-import { Component, OnInit } from '@angular/core';
-import { SearchService } from '../search.service';
+import { Component, Input } from '@angular/core';
+import { DocResultType, SearchService } from '../search.service';
 
 @Component({
   selector: 'app-search-result',
@@ -7,15 +7,14 @@ import { SearchService } from '../search.service';
   templateUrl: './search-result.component.html',
   styleUrl: './search-result.component.css'
 })
-export class SearchResultComponent implements OnInit {
-  title = "";
-  description = "Lorem ipsum docet lorem ipsum docet";
+export class SearchResultComponent {
+  @Input() searchResult: DocResultType = {
+    title: "",
+    description: "",
+    score: 0,
+    url: ""
+  };
 
   constructor(public searchService: SearchService) { }
-
-  ngOnInit() {
-    this.title = this.searchService.searchString;
-  }
-
 
 }

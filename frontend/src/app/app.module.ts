@@ -8,6 +8,7 @@ import { HomeComponent } from './home/home.component';
 import { SearchComponent } from './search/search.component';
 import { SearchBarComponent } from './search-bar/search-bar.component';
 import { SearchResultComponent } from './search-result/search-result.component';
+import { provideHttpClient } from '@angular/common/http';
 
 @NgModule({
   declarations: [
@@ -22,7 +23,9 @@ import { SearchResultComponent } from './search-result/search-result.component';
     AppRoutingModule,
     FormsModule
   ],
-  providers: [],
+  providers: [
+    provideHttpClient(),
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

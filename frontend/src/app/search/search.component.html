@@ -1,4 +1,9 @@
 <app-search-bar></app-search-bar>
-<app-search-result></app-search-result>
-<app-search-result></app-search-result>
-<app-search-result></app-search-result>
+<p>
+  <em>
+    {{searchService.searchSummary || "Generating summary..."}}
+  </em>
+</p>
+@for(searchResult of searchService.searchResults; track searchResult) {
+<app-search-result [searchResult]="searchResult"></app-search-result>
+}
