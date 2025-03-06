@@ -22,6 +22,7 @@ type SearchResponse struct {
 
 // SearchHandler handles GET requests to /search.
 func SearchHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	// Parse the query string
 	query := r.URL.Query().Get("q")
 	if query == "" {

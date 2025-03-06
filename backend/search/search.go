@@ -91,8 +91,10 @@ func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
 
 // Result represents the final document result with a URL and a score.
 type Result struct {
-	URL   string  `json:"url"`
-	Score float64 `json:"score"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Score       float64 `json:"score"`
 }
 
 // ProcessQuery tokenizes, stems, performs a Boolean AND, computes tf-idf weights,
@@ -209,8 +211,10 @@ func ProcessQuery(query string) []Result {
 		}
 
 		results = append(results, Result{
-			URL:   DocIDToDocEntryPartitioned[docID].URL,
-			Score: score,
+			URL:         DocIDToDocEntryPartitioned[docID].URL,
+			Title:       DocIDToDocEntryPartitioned[docID].Title,
+			Description: DocIDToDocEntryPartitioned[docID].Description,
+			Score:       score,
 		})
 	}
 

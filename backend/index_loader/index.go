@@ -9,7 +9,7 @@ import (
 // DocEntry represents a document entry with three string fields.
 type DocEntry struct {
 	URL         string `json:"url"`
-	Document    string `json:"title"`
+	Title    string `json:"title"`
 	Description string `json:"description"`
 }
 
