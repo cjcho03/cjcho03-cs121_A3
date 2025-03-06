@@ -3,7 +3,6 @@ package search
 import (
 	"math"
 	"sort"
-	"sync"
 
 	"backend/index_loader"
 	"backend/utils"
@@ -16,7 +15,6 @@ var (
 	IndexDirData               *index_loader.IndexDir
 
 	indexCache = make(map[string]index_loader.IndexMap)
-	cacheMutex sync.Mutex
 )
 
 // SetDataPartitioned initializes the search module with docs, doc count, and index directory.
@@ -30,25 +28,22 @@ func SetDataPartitioned(docs map[int]index_loader.DocEntry, total int, dir *inde
 // getPostingsForToken loads/returns postings for a given token.
 func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
 	if IndexDirData == nil {
-		// Return false if not initialized
+		// Not initialized.
 		return nil, false
 	}
 
 	filename := index_loader.GetIndexFileForToken(token, IndexDirData)
 
-	cacheMutex.Lock()
+	// Look up the index from the cache without a mutex.
 	idx, found := indexCache[filename]
-	cacheMutex.Unlock()
-
 	if !found {
 		loadedIdx, err := index_loader.LoadIndex(filename)
 		if err != nil {
-			// If there's an error loading the file, return false
+			// If there's an error loading the file, return false.
 			return nil, false
 		}
-		cacheMutex.Lock()
+		// Store the loaded index in the cache.
 		indexCache[filename] = loadedIdx
-		cacheMutex.Unlock()
 		idx = loadedIdx
 	}
 
