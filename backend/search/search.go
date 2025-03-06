@@ -59,6 +59,8 @@ func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
 // Result represents the final doc result with a score.
 type Result struct {
 	URL   string  `json:"url"`
+	Title string `json:"title"`
+	Description string `json:"description"`
 	Score float64 `json:"score"`
 }
 
@@ -168,6 +170,8 @@ func ProcessQuery(query string) []Result {
 
 		results = append(results, Result{
 			URL:   DocIDToDocEntryPartitioned[docID].URL,
+			Title: DocIDToDocEntryPartitioned[docID].Title,
+			Description: DocIDToDocEntryPartitioned[docID].Description,
 			Score: score,
 		})
 	}
@@ -177,9 +181,5 @@ func ProcessQuery(query string) []Result {
 		return results[i].Score > results[j].Score
 	})
 
-	// 8) Return top 5
-	if len(results) > 5 {
-		results = results[:5]
-	}
 	return results
 }
