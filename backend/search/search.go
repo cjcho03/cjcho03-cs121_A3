@@ -22,8 +22,38 @@ var (
 	idfCache = make(map[string]float64)
 )
 
-// PreloadIndexCache loads all index files specified in the IndexDirData into the cache,
-// and populates the tokenCache for faster token lookups.
+// A list of common stopwords and frequent tokens to preload.
+var frequentTokens = []string{
+	// Common English stopwords.
+	"i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
+	"yours", "yourself", "yourselves", "he", "him", "his", "himself", "she",
+	"her", "hers", "herself", "it", "its", "itself", "they", "them", "their",
+	"theirs", "themselves", "what", "which", "who", "whom", "this", "that",
+	"these", "those", "am", "is", "are", "was", "were", "be", "been", "being",
+	"have", "has", "had", "having", "do", "does", "did", "doing", "a", "an",
+	"the", "and", "but", "if", "or", "because", "as", "until", "while", "of",
+	"at", "by", "for", "with", "about", "against", "between", "into", "through",
+	"during", "before", "after", "above", "below", "to", "from", "up", "down",
+	"in", "out", "on", "off", "over", "under", "again", "further", "then",
+	"once", "here", "there", "when", "where", "why", "how", "all", "any",
+	"both", "each", "few", "more", "most", "other", "some", "such", "no", "nor",
+	"not", "only", "own", "same", "so", "than", "too", "very", "can",
+	"will", "just", "don", "should", "now",
+	// Domain-specific and additional tokens.
+	"computer", "science", "software", "engineering", "university", "major", "degree", "bachelor", "master", "phd",
+	"course", "class", "lecture", "lab", "assignment", "homework", "exam", "quiz", "project", "research", "paper",
+}
+
+// PreloadFrequentTokens forces the loading of a given list of tokens into the cache.
+// It calls getPostingsForToken for each token.
+func PreloadFrequentTokens(tokens []string) {
+	for _, token := range tokens {
+		getPostingsForToken(token)
+	}
+}
+
+// PreloadIndexCache can be used if you want to load entire index files.
+// In this updated version we favor selective preloading via PreloadFrequentTokens.
 func PreloadIndexCache() {
 	if IndexDirData == nil {
 		return
@@ -32,7 +62,7 @@ func PreloadIndexCache() {
 		fullPath := filepath.Join("indexdir", filename)
 		idx, err := index_loader.LoadIndex(fullPath)
 		if err != nil {
-			continue
+			continue // Skip files that fail to load.
 		}
 		// Store the index file in the cache.
 		indexCache[fullPath] = idx
@@ -47,12 +77,12 @@ func PreloadIndexCache() {
 }
 
 // SetDataPartitioned initializes the search module with document entries, document count,
-// and the index directory. It also preloads the index cache.
+// and the index directory. It also preloads a selected set of tokens (including stopwords).
 func SetDataPartitioned(docs map[int]index_loader.DocEntry, total int, dir *index_loader.IndexDir) {
 	DocIDToDocEntryPartitioned = docs
 	TotalDocsPartitioned = total
 	IndexDirData = dir
-	PreloadIndexCache()
+	PreloadFrequentTokens(frequentTokens)
 }
 
 // getPostingsForToken returns the postings for a given token.
@@ -89,7 +119,7 @@ func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
 	return postings, ok
 }
 
-// Result represents the final document result with a URL and a score.
+// Result represents the final document result with a URL, title, description, and a score.
 type Result struct {
 	URL         string  `json:"url"`
 	Title       string  `json:"title"`
