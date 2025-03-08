@@ -68,6 +68,19 @@ const HTMLCleaner = {
 			})
 			.transform(htmlString);
 	},
+	extractLinks(htmlString: string) {
+		const result: string[] = [];
+		new HTMLRewriter()
+		.on("a", {
+			element(hyperlink) {
+				const ref = hyperlink.getAttribute("href");
+				if (ref)
+					result.push(ref);
+			}
+		})
+		.transform(htmlString);
+		return result
+	},
 	tokenize(htmlString: string) {
 		const tokens: TokenType[] = []
 		new HTMLRewriter()

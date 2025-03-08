@@ -24,6 +24,7 @@ interface TitleType {
 type IndexType = Map<string, IndexEntry[]>;
 type DocstoreType = DoubleMap<string, number>;
 type TitleStoreType = Map<number, TitleType>;
+type RankstoreType = Map<string, number>;
 
 const LOW_INFORMATION_DOC_THRESHOLD = 10;
 
@@ -91,8 +92,8 @@ class Index {
 
 	async saveIndex() {
 		const sortedIndex = Array.from(this.index.entries()).sort((a, b) => {
-			if (a < b) return -1;
-			if (a > b) return 1;
+			if (a[0] < b[0]) return -1;
+			if (a[0] > b[0]) return 1;
 			return 0;
 		});
 
@@ -112,6 +113,7 @@ export class IndexRouter {
 	keys: string[];
 	documentStore: DocstoreType = new DoubleMap();
 	titleStore: TitleStoreType = new Map();
+	pageRankStore: RankstoreType = new Map();
 
 	constructor(numberOfIndexes = 1) {
 		this.childIndexes = [];
@@ -136,7 +138,9 @@ export class IndexRouter {
 		// Skip if the document is already parsed (in the document store)
 		if (this.documentStore.getOne(documentName)) return;
 		// Tokenize the web page and get the token frequency
-		const tokens = HTMLCleaner.tokenize(HTMLCleaner.clean(documentContent));
+		const cleanHtml = HTMLCleaner.clean(documentContent);
+		const tokens = HTMLCleaner.tokenize(cleanHtml);
+		const outlinks = HTMLCleaner.extractLinks(cleanHtml);
 		// Skip if the document is similar to one already parsed
 		const websiteHash = simhashTokens(tokens.map(token => token.value));
 		if (simhashStore.isDuplicate(websiteHash)) return;
@@ -150,6 +154,17 @@ export class IndexRouter {
 		this.titleStore.set(documentId, {
 			title: documentTitle,
 			description: documentDescription
+		});
+		// Add the outlinks
+		outlinks.forEach(link => {
+			const parsedLink = URL.parse(link)?.toString();
+			if (parsedLink) {
+				const rank = this.pageRankStore.get(parsedLink);
+				if (rank)
+					this.pageRankStore.set(parsedLink, rank + 1);
+				else
+					this.pageRankStore.set(parsedLink, 1);
+			}
 		});
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
@@ -267,22 +282,31 @@ export class IndexRouter {
 		for (const index of this.childIndexes) {
 			sum += await index.saveIndex();
 		}
+
 		sum += await Bun.write("index_dir.json", JSON.stringify({
 			keys: [...this.keys],
 			indexFiles: [...this.childIndexes.map(c => indexFileName(c.id))]
 		}));
 
-		sum += await Bun.write("docs.json", JSON.stringify(
-			Object.fromEntries(
-				this.documentStore.mapTwo.keys().map(key => {
-					return [key, {
-						url: this.documentStore.getTwo(key),
-						title: this.titleStore.get(key)?.title,
-						description: this.titleStore.get(key)?.description
-					}]
-				})
-			)
-		));
+		let documents: any = {};
+		for (const key of this.documentStore.mapTwo.keys()) {
+			documents[key] = {
+				url: this.documentStore.getTwo(key),
+				title: this.titleStore.get(key)?.title,
+				description: this.titleStore.get(key)?.description
+			}
+		}
+
+		sum += await Bun.write("docs.json", JSON.stringify(documents));
+
+		const sortedIndex = Array.from(this.pageRankStore.entries()).sort((a, b) => {
+			if (a[1] < b[1]) return -1;
+			if (a[1] > b[1]) return 1;
+			return 0;
+		}).reverse();
+
+		sum += await Bun.write("ranks.json", JSON.stringify(Object.fromEntries(sortedIndex)));
+
 		return sum;
 	}
 
@@ -292,6 +316,12 @@ export class IndexRouter {
 		this.documentStore = new DoubleMap();
 		for (const [key, value] of new Map<string, string>(Object.entries(jsonDocs))) {
 			this.documentStore.set(key, parseInt(value));
+		}
+
+		const rankStore = Bun.file("ranks.json");
+		const jsonRanks = await rankStore.json();
+		for (const [key, value] of new Map<string, string>(Object.entries(jsonDocs))) {
+			this.pageRankStore.set(key, parseInt(value));
 		}
 
 		for (const index of this.childIndexes) {

@@ -1,6 +1,20 @@
-import { type WebsiteFile } from "./get-website"
-import HTMLCleaner, { getTokenFrequency } from "./html-tokenizer";
+import { IndexRouter } from ".";
+import getWebsites, { type WebsiteFile } from "./get-website"
+import { RoutedIndexReporter } from "./report";
 
-const website = Bun.file("./developer/DEV/aiclub_ics_uci_edu/8ef6d99d9f9264fc84514cdd2e680d35843785310331e1db4bbd06dd2b8eda9b.json");
-const websiteObject: WebsiteFile = await website.json();
-console.log(getTokenFrequency(HTMLCleaner.tokenize(HTMLCleaner.clean(websiteObject.content))))
+const NUMBER_OF_INDEX_FRAGMENTS = 300;
+
+const index = new IndexRouter(NUMBER_OF_INDEX_FRAGMENTS);
+const reporter = new RoutedIndexReporter(index);
+
+const websites = await getWebsites();
+// Add a website to the index
+for (let i = 0; i < 10; ++i) {
+const website = websites[i];
+// for (const website of websites) {
+	await index.addDocument(website);
+}
+
+console.log(`Indexed documents: ${reporter.numberOfIndexedDocuments()}`);
+console.log(`Unique words: ${reporter.numberOfUniqueWords()}`);
+console.log(`Index size: ${await reporter.sizeOfIndex()} kB`);
