@@ -2,6 +2,7 @@ package search
 
 import (
 	"math"
+	"path/filepath"
 	"sort"
 
 	"backend/index_loader"
@@ -9,71 +10,107 @@ import (
 )
 
 var (
-	// Updated to hold DocEntry objects instead of just URL strings.
 	DocIDToDocEntryPartitioned map[int]index_loader.DocEntry
 	TotalDocsPartitioned       int
 	IndexDirData               *index_loader.IndexDir
 
+	// Cache mapping index file names to IndexMap.
 	indexCache = make(map[string]index_loader.IndexMap)
+	// Cache mapping token directly to its postings.
+	tokenCache = make(map[string][]index_loader.Posting)
+	// Cache computed idf values.
+	idfCache = make(map[string]float64)
 )
 
-// SetDataPartitioned initializes the search module with docs, doc count, and index directory.
-// It now accepts a map[int]index_loader.DocEntry.
+// PreloadIndexCache loads all index files specified in the IndexDirData into the cache,
+// and populates the tokenCache for faster token lookups.
+func PreloadIndexCache() {
+	if IndexDirData == nil {
+		return
+	}
+	for _, filename := range IndexDirData.IndexFiles {
+		fullPath := filepath.Join("indexdir", filename)
+		idx, err := index_loader.LoadIndex(fullPath)
+		if err != nil {
+			continue
+		}
+		// Store the index file in the cache.
+		indexCache[fullPath] = idx
+		// Populate tokenCache for every token in this index.
+		for token, postings := range idx {
+			// Only cache if not already cached.
+			if _, exists := tokenCache[token]; !exists {
+				tokenCache[token] = postings
+			}
+		}
+	}
+}
+
+// SetDataPartitioned initializes the search module with document entries, document count,
+// and the index directory. It also preloads the index cache.
 func SetDataPartitioned(docs map[int]index_loader.DocEntry, total int, dir *index_loader.IndexDir) {
 	DocIDToDocEntryPartitioned = docs
 	TotalDocsPartitioned = total
 	IndexDirData = dir
+	PreloadIndexCache()
 }
 
-// getPostingsForToken loads/returns postings for a given token.
+// getPostingsForToken returns the postings for a given token.
+// It first checks the tokenCache and, if missing, loads the appropriate index file.
 func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
+	// Check tokenCache first.
+	if postings, ok := tokenCache[token]; ok {
+		return postings, true
+	}
+
 	if IndexDirData == nil {
-		// Not initialized.
 		return nil, false
 	}
 
+	// Determine the index file based on the token.
 	filename := index_loader.GetIndexFileForToken(token, IndexDirData)
 
-	// Look up the index from the cache without a mutex.
+	// Look up the index from the cache.
 	idx, found := indexCache[filename]
 	if !found {
 		loadedIdx, err := index_loader.LoadIndex(filename)
 		if err != nil {
-			// If there's an error loading the file, return false.
 			return nil, false
 		}
-		// Store the loaded index in the cache.
 		indexCache[filename] = loadedIdx
 		idx = loadedIdx
 	}
 
 	postings, ok := idx[token]
+	if ok {
+		// Cache the token's postings for future queries.
+		tokenCache[token] = postings
+	}
 	return postings, ok
 }
 
-// Result represents the final doc result with a score.
+// Result represents the final document result with a URL and a score.
 type Result struct {
-	URL   string  `json:"url"`
-	Title string `json:"title"`
-	Description string `json:"description"`
-	Score float64 `json:"score"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Score       float64 `json:"score"`
 }
 
-// ProcessQuery runs a Boolean AND on all tokens, then ranks docs using tf-idf.
+// ProcessQuery tokenizes, stems, performs a Boolean AND, computes tf-idf weights,
+// and returns the top results.
 func ProcessQuery(query string) []Result {
 	if IndexDirData == nil {
-		// Not initialized, return nothing
 		return nil
 	}
 
-	// 1) Tokenize
+	// 1) Tokenize.
 	rawTokens := utils.Tokenize(query)
 	if len(rawTokens) == 0 {
-		// No tokens after tokenization
 		return nil
 	}
 
-	// 2) Stem
+	// 2) Stem and count token frequency.
 	queryFreq := make(map[string]int)
 	var queryTokens []string
 	for _, raw := range rawTokens {
@@ -82,12 +119,12 @@ func ProcessQuery(query string) []Result {
 		queryFreq[stemmed]++
 	}
 
-	// 3) Boolean AND across tokens
+	// 3) Boolean AND (intersection) across tokens.
 	docScores := make(map[int]map[string]int)
 	for i, token := range queryTokens {
 		postings, found := getPostingsForToken(token)
 		if !found || len(postings) == 0 {
-			// If any token yields no docs, final result is empty
+			// If any token yields no documents, return an empty result.
 			return []Result{}
 		}
 
@@ -117,30 +154,35 @@ func ProcessQuery(query string) []Result {
 	}
 
 	if len(docScores) == 0 {
-		// No docs remain after intersection
 		return []Result{}
 	}
 
-	// 4) Build query vector (tf-idf)
+	// 4) Build query vector (tf-idf) and compute IDF from cache.
 	queryVec := make(map[string]float64)
 	for token, freq := range queryFreq {
-		postings, _ := getPostingsForToken(token)
-		df := len(postings)
-		if df == 0 {
-			continue
+		var idf float64
+		if cached, ok := idfCache[token]; ok {
+			idf = cached
+		} else {
+			postings, _ := getPostingsForToken(token)
+			df := len(postings)
+			if df == 0 {
+				continue
+			}
+			idf = math.Log(float64(TotalDocsPartitioned) / float64(df))
+			idfCache[token] = idf
 		}
-		idf := math.Log(float64(TotalDocsPartitioned) / float64(df))
 		queryVec[token] = float64(freq) * idf
 	}
 
-	// 5) Query vector norm
+	// 5) Compute the norm of the query vector.
 	var queryNorm float64
 	for _, weight := range queryVec {
 		queryNorm += weight * weight
 	}
 	queryNorm = math.Sqrt(queryNorm)
 
-	// 6) Compute doc scores
+	// 6) Compute document scores.
 	var results []Result
 	for docID, freqs := range docScores {
 		var dot, docNorm float64
@@ -150,11 +192,16 @@ func ProcessQuery(query string) []Result {
 			if df == 0 {
 				continue
 			}
-			idf := math.Log(float64(TotalDocsPartitioned) / float64(df))
+			var idf float64
+			if cached, ok := idfCache[token]; ok {
+				idf = cached
+			} else {
+				idf = math.Log(float64(TotalDocsPartitioned) / float64(df))
+				idfCache[token] = idf
+			}
 			docWeight := float64(tf) * idf
-			queryWeight := queryVec[token]
-			dot += docWeight * queryWeight
-			docNorm += (docWeight * docWeight)
+			dot += docWeight * queryVec[token]
+			docNorm += docWeight * docWeight
 		}
 		docNorm = math.Sqrt(docNorm)
 
@@ -164,17 +211,25 @@ func ProcessQuery(query string) []Result {
 		}
 
 		results = append(results, Result{
-			URL:   DocIDToDocEntryPartitioned[docID].URL,
-			Title: DocIDToDocEntryPartitioned[docID].Title,
+			URL:         DocIDToDocEntryPartitioned[docID].URL,
+			Title:       DocIDToDocEntryPartitioned[docID].Title,
 			Description: DocIDToDocEntryPartitioned[docID].Description,
-			Score: score,
+			Score:       score,
 		})
 	}
 
-	// 7) Sort descending by score
+	// 7) Sort the results in descending order by score.
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score == results[j].Score {
+			// Secondary sort by URL for tie-breaking.
+			return results[i].URL < results[j].URL
+		}
 		return results[i].Score > results[j].Score
 	})
 
+	// 8) Return the top 5 results.
+	if len(results) > 5 {
+		results = results[:5]
+	}
 	return results
 }
