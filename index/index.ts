@@ -109,18 +109,24 @@ class Index {
 }
 
 export class IndexRouter {
-	childIndexes: Index[];
+	// childIndexes: Index[];
 	keys: string[];
 	documentStore: DocstoreType = new DoubleMap();
 	titleStore: TitleStoreType = new Map();
 	pageRankStore: RankstoreType = new Map();
+	currentlyOpenIndex: Index;
+	smallestIndexSize: number;
+	numberOfIndexes: number;
 
 	constructor(numberOfIndexes = 1) {
-		this.childIndexes = [];
+		// this.childIndexes = [];
 		this.keys = [];
-		for (let i = 0; i < numberOfIndexes; ++i) {
-			this.childIndexes.push(new Index(i))
-		}
+		// for (let i = 0; i < numberOfIndexes; ++i) {
+		// 	this.childIndexes.push(new Index(i))
+		// }
+		this.currentlyOpenIndex = this.openIndex(0);
+		this.smallestIndexSize = 0;
+		this.numberOfIndexes = 0;
 	}
 
 	async addDocument(file: BunFile): Promise<void> {
@@ -178,11 +184,10 @@ export class IndexRouter {
 		const indexChosen = this.chooseInsertionIndex(token);
 		const indexSmallest = this.smallestIndex();
 		const chosenIndex = this.childIndexes[indexChosen];
-		const smallestIndex = this.childIndexes[indexSmallest];
 		// Insert into the chosen child
 		chosenIndex.insertToken(token, indexEntry);
 		// Rebalance the tree
-		const minLength = smallestIndex.index.size;
+		const minLength = this.smallestIndexSize;
 		if (chosenIndex.index.size > minLength + 1) {
 			if (indexSmallest < indexChosen) {
 				// If smallestIndex < chosenIndex, redistribute left all from chosen to smallest
@@ -201,7 +206,7 @@ export class IndexRouter {
 			sortedInsert(this.keys, token);
 			return this.keys.length;
 		}
-		if (this.keys.length + 1 < this.childIndexes.length) {
+		if (this.keys.length + 1 < this.numberOfIndexes) {
 			let left = 0;
 			let right = this.keys.length;
 
