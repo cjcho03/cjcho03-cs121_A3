@@ -18,5 +18,5 @@ for (let i = 0; i < 10; ++i) {
 }
 
 console.log(`Indexed documents: ${reporter.numberOfIndexedDocuments()}`);
-console.log(`Unique words: ${reporter.numberOfUniqueWords()}`);
+console.log(`Unique words: ${await reporter.numberOfUniqueWords()}`);
 console.log(`Index size: ${await reporter.sizeOfIndex()} kB`);

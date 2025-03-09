@@ -1,4 +1,4 @@
-import index, { IndexRouter } from "./index";
+import index, { IndexRouter, Index } from "./index";
 
 export function numberOfIndexedDocuments(): number {
 	return index.documentStore.size;
@@ -23,8 +23,14 @@ export class RoutedIndexReporter {
 		return this.index.documentStore.size;
 	}
 
-	numberOfUniqueWords() {
-		return this.index.childIndexes.reduce((acc, cur) => acc += cur.tokens.length, 0);
+	async numberOfUniqueWords() {
+		let result = 0;
+		for (let i = 0; i < this.index.numberOfIndexes; ++i) {
+			const index = new Index(i);
+			await index.loadIndex();
+			result += index.tokens.length;
+		}
+		return result;
 	}
 
 	async sizeOfIndex() {
