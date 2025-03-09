@@ -28,7 +28,7 @@ type RankstoreType = Map<string, number>;
 
 const LOW_INFORMATION_DOC_THRESHOLD = 10;
 
-class Index {
+export class Index {
 	id: number;
 	tokens: string[];
 	index: IndexType;
@@ -110,13 +110,12 @@ class Index {
 
 export class IndexRouter {
 	// childIndexes: Index[];
+	numberOfIndexes: number;
+
 	keys: string[];
 	documentStore: DocstoreType = new DoubleMap();
 	titleStore: TitleStoreType = new Map();
 	pageRankStore: RankstoreType = new Map();
-	currentlyOpenIndex: Index;
-	smallestIndexSize: number;
-	numberOfIndexes: number;
 
 	constructor(numberOfIndexes = 1) {
 		// this.childIndexes = [];
@@ -124,9 +123,7 @@ export class IndexRouter {
 		// for (let i = 0; i < numberOfIndexes; ++i) {
 		// 	this.childIndexes.push(new Index(i))
 		// }
-		this.currentlyOpenIndex = this.openIndex(0);
-		this.smallestIndexSize = 0;
-		this.numberOfIndexes = 0;
+		this.numberOfIndexes = numberOfIndexes;
 	}
 
 	async addDocument(file: BunFile): Promise<void> {
@@ -176,32 +173,35 @@ export class IndexRouter {
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
 			// Create the index entry structure and add it to the appropriate index
-			this.addToken(token, { documentId: documentId, occurrences: frequency });
+			await this.addToken(token, { documentId: documentId, occurrences: frequency });
 		}
 	}
 
-	addToken(token: string, indexEntry: IndexEntry) {
-		const indexChosen = this.chooseInsertionIndex(token);
-		const indexSmallest = this.smallestIndex();
-		const chosenIndex = this.childIndexes[indexChosen];
+	async addToken(token: string, indexEntry: IndexEntry) {
+		const indexChosen = await this.chooseInsertionIndex(token);
+		const indexSmallest = await this.smallestIndex();
+		const chosenIndex = await this.openPage(indexChosen);
+		const smallestIndex = await this.openPage(indexSmallest);
 		// Insert into the chosen child
 		chosenIndex.insertToken(token, indexEntry);
 		// Rebalance the tree
-		const minLength = this.smallestIndexSize;
+		const minLength = smallestIndex.index.size;
 		if (chosenIndex.index.size > minLength + 1) {
 			if (indexSmallest < indexChosen) {
 				// If smallestIndex < chosenIndex, redistribute left all from chosen to smallest
-				this.redistributeLeft(indexChosen, indexSmallest);
+				await this.redistributeLeft(indexChosen, indexSmallest);
 
 			}
 			else {
 				// Else, restirbute right
-				this.redistributeRight(indexChosen, indexSmallest);
+				await this.redistributeRight(indexChosen, indexSmallest);
 			}
 		}
+		await chosenIndex.saveIndex();
+		await smallestIndex.saveIndex();
 	}
 
-	private chooseInsertionIndex(token: string) {
+	private async chooseInsertionIndex(token: string) {
 		if (this.keys.length === 0) {
 			sortedInsert(this.keys, token);
 			return this.keys.length;
@@ -219,7 +219,7 @@ export class IndexRouter {
 			}
 			if (this.keys[left] === token)
 				return left + 1;
-			this.redistributeRight(left + 1, this.keys.length + 1);
+			await this.redistributeRight(left + 1, this.keys.length + 1);
 			this.keys[left] = token;
 			return left + 1;
 		}
@@ -231,23 +231,23 @@ export class IndexRouter {
 		return indexI;
 	}
 
-	private smallestIndex() {
+	private async smallestIndex() {
 		let minLength = -1;
-		for (let i = 0; i < this.childIndexes.length; ++i) {
-			const index = this.childIndexes[i];
-			if (minLength === -1 || index.index.size < this.childIndexes[minLength].index.size) {
+		for (let i = 0; i < this.numberOfIndexes; ++i) {
+			const index = await this.openPage(i);
+			if (minLength === -1 || index.index.size < (await this.openPage(minLength)).index.size) {
 				minLength = i;
 			}
 		}
 		return minLength;
 	}
 
-	private redistributeLeft(currentIndexI: number, endIndexI: number) {
+	private async redistributeLeft(currentIndexI: number, endIndexI: number) {
 		if (currentIndexI <= endIndexI)
 			return;
 		const nextIndexI = currentIndexI - 1;
-		const currentIndex = this.childIndexes[currentIndexI];
-		const nextIndex = this.childIndexes[nextIndexI];
+		const currentIndex = await this.openPage(currentIndexI);
+		const nextIndex = await this.openPage(nextIndexI);
 		// Remove the smallest token entry from this index and move it to the left one
 		const smallestValueOfCurrent = currentIndex.smallestToken;
 		currentIndex.removeToken(smallestValueOfCurrent.token);
@@ -259,15 +259,17 @@ export class IndexRouter {
 		if (newSmallest)
 			this.keys[nextIndexI] = newSmallest.token;
 		// Continue redistribution
-		this.redistributeLeft(nextIndexI, endIndexI);
+		await currentIndex.saveIndex();
+		await nextIndex.saveIndex();
+		await this.redistributeLeft(nextIndexI, endIndexI);
 	}
 
-	private redistributeRight(currentIndexI: number, endIndexI: number) {
+	private async redistributeRight(currentIndexI: number, endIndexI: number) {
 		if (currentIndexI >= endIndexI)
 			return;
 		const nextIndexI = currentIndexI + 1;
-		const currentIndex = this.childIndexes[currentIndexI];
-		const nextIndex = this.childIndexes[nextIndexI];
+		const currentIndex = await this.openPage(currentIndexI);
+		const nextIndex = await this.openPage(nextIndexI);
 		// Remove the smallest token entry from this index and move it to the left one
 		const largestValueOfCurrent = currentIndex.largestToken;
 		currentIndex.removeToken(largestValueOfCurrent.token);
@@ -279,18 +281,26 @@ export class IndexRouter {
 		if (newSmallest.token)
 			this.keys[currentIndexI] = newSmallest.token;
 		// Continue redistribution
-		this.redistributeRight(nextIndexI, endIndexI);
+		await currentIndex.saveIndex();
+		await nextIndex.saveIndex();
+		await this.redistributeRight(nextIndexI, endIndexI);
 	}
 
 	async saveIndex() {
 		let sum = 0;
-		for (const index of this.childIndexes) {
+		for (let i = 0; i < this.numberOfIndexes; ++i) {
+			const index = await this.openPage(i);
 			sum += await index.saveIndex();
+		}
+
+		const indexFiles = [];
+		for (let i = 0; i < this.numberOfIndexes; ++i) {
+			indexFiles.push(indexFileName(i));
 		}
 
 		sum += await Bun.write("index_dir.json", JSON.stringify({
 			keys: [...this.keys],
-			indexFiles: [...this.childIndexes.map(c => indexFileName(c.id))]
+			indexFiles: indexFiles
 		}));
 
 		let documents: any = {};
@@ -325,17 +335,20 @@ export class IndexRouter {
 
 		const rankStore = Bun.file("ranks.json");
 		const jsonRanks = await rankStore.json();
-		for (const [key, value] of new Map<string, string>(Object.entries(jsonDocs))) {
+		for (const [key, value] of new Map<string, string>(Object.entries(jsonRanks))) {
 			this.pageRankStore.set(key, parseInt(value));
 		}
 
-		for (const index of this.childIndexes) {
-			await index.loadIndex();
-		}
 
 		const routerFile = Bun.file("index_dir.json");
 		const jsonRouter: DirectoryEntry = await routerFile.json();
 		this.keys = [...jsonRouter.keys];
+	}
+
+	async openPage(pageNumber: number) {
+		const index = new Index(pageNumber);
+		await index.loadIndex();
+		return index;
 	}
 }
 
