@@ -2,7 +2,6 @@ package search
 
 import (
 	"math"
-	"path/filepath"
 	"sort"
 
 	"backend/index_loader"
@@ -49,30 +48,6 @@ var frequentTokens = []string{
 func PreloadFrequentTokens(tokens []string) {
 	for _, token := range tokens {
 		getPostingsForToken(token)
-	}
-}
-
-// PreloadIndexCache can be used if you want to load entire index files.
-// In this updated version we favor selective preloading via PreloadFrequentTokens.
-func PreloadIndexCache() {
-	if IndexDirData == nil {
-		return
-	}
-	for _, filename := range IndexDirData.IndexFiles {
-		fullPath := filepath.Join("indexdir", filename)
-		idx, err := index_loader.LoadIndex(fullPath)
-		if err != nil {
-			continue // Skip files that fail to load.
-		}
-		// Store the index file in the cache.
-		indexCache[fullPath] = idx
-		// Populate tokenCache for every token in this index.
-		for token, postings := range idx {
-			// Only cache if not already cached.
-			if _, exists := tokenCache[token]; !exists {
-				tokenCache[token] = postings
-			}
-		}
 	}
 }
 
@@ -257,9 +232,5 @@ func ProcessQuery(query string) []Result {
 		return results[i].Score > results[j].Score
 	})
 
-	// 8) Return the top 5 results.
-	if len(results) > 5 {
-		results = results[:5]
-	}
 	return results
 }

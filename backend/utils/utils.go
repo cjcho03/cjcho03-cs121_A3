@@ -8,6 +8,7 @@ import (
 
 // Tokenize splits a string into tokens.
 func Tokenize(text string) []string {
+	text = strings.ToLower(text)
 	var tokens []string
 	start := -1
 	for i, ch := range text {
