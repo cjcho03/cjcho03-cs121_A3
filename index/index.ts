@@ -161,7 +161,7 @@ export class IndexRouter {
 		// Add the outlinks
 		outlinks.forEach(link => {
 			const parsedLink = URL.parse(link)?.toString();
-			if (parsedLink) {
+			if (parsedLink && isLinkValid(parsedLink)) {
 				const rank = this.pageRankStore.get(parsedLink);
 				if (rank)
 					this.pageRankStore.set(parsedLink, rank + 1);
@@ -444,6 +444,18 @@ function sortedInsert<T>(list: T[], value: T) {
 	}
 
 	list.splice(left, 0, value);
+}
+
+function isLinkValid(link: string) {
+	const invalidExtensionsRegex = /\.(css|js|bmp|gif|jpg|jpeg|png|mp4|mp3|zip|rar|gz|pdf|doc|docx|ppt|pptx|tar)$/i;
+	const permittedDomains = ['ics.uci.edu', 'cs.uci.edu', 'informatics.uci.edu', 'stat.uci.edu'];
+
+	const parsedUrl = new URL(link);
+	const isHttp = parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
+	const isInDomain = permittedDomains.some(domain => parsedUrl.hostname.includes(domain));
+	const isValidExtension = !invalidExtensionsRegex.test(parsedUrl.href.toLowerCase());
+
+	return isHttp && isInDomain && isValidExtension;
 }
 
 function sortedErase<T>(list: T[], value: T) {

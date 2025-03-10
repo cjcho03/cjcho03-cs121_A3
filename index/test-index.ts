@@ -14,6 +14,7 @@ for (let i = 0; i < NUMBER_OF_INDEX_FRAGMENTS; ++i) {
 }
 for (let i = 0; i < 10; ++i) {
 	const website = websites[i];
+	console.log(`Parsing ${i}`)
 	await index.addDocument(website);
 }
 

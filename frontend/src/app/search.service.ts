@@ -42,9 +42,14 @@ export class SearchService {
   }
 
   doSearch(searchString: string) {
-
     this.searchString = searchString;
+    this.searchSummary = "";
+    this.currentPage = 1;
+    this.totalNumberOfResults = 0;
+    this.resultsPerPage = 1;
+
     searchEndpoint.searchParams.set("q", searchString);
+    searchEndpoint.searchParams.set("page", String(this.currentPage));
 
     this.http.get<SearchResult>(searchEndpoint.toString()).subscribe(obj => {
       this.totalNumberOfResults = obj.total_results;
