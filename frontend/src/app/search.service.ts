@@ -28,12 +28,17 @@ export class SearchService {
   searchString = "";
   searchSummary = "";
   searchResults: DocResultType[] = [];
-  currentPage = 0;
-  numberOfPages = 0;
+  currentPage = 1;
+  totalNumberOfResults = 0;
+  resultsPerPage = 1;
 
   constructor(private router: Router, private http: HttpClient) { }
   get hasNextPage() {
-    return this.currentPage + 1 < this.numberOfPages
+    return this.currentPage < this.numberOfPages
+  }
+
+  get numberOfPages() {
+    return Math.ceil(this.totalNumberOfResults / this.resultsPerPage);
   }
 
   doSearch(searchString: string) {
@@ -42,7 +47,8 @@ export class SearchService {
     searchEndpoint.searchParams.set("q", searchString);
 
     this.http.get<SearchResult>(searchEndpoint.toString()).subscribe(obj => {
-      this.numberOfPages = Math.ceil(obj.total_results / obj.per_page);
+      this.totalNumberOfResults = obj.total_results;
+      this.resultsPerPage = obj.per_page;
       this.searchResults = obj.results;
       if (this.searchResults.length > 0)
         this.generateSummary().then(res => this.searchSummary = res);
@@ -57,7 +63,7 @@ export class SearchService {
   nextPage() {
     if (!this.hasNextPage)
       return;
-    searchEndpoint.searchParams.set("page", String(this.currentPage + 1));
+    searchEndpoint.searchParams.set("page", String(++this.currentPage));
     this.http.get<SearchResult>(searchEndpoint.toString()).subscribe(obj => {
       this.searchResults.push(...obj.results);
     });

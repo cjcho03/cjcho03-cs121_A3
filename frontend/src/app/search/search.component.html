@@ -1,5 +1,6 @@
 <app-search-bar></app-search-bar>
 @if(searchService.searchResults.length > 0) {
+<p>Displaying {{searchService.searchResults.length}}/{{searchService.totalNumberOfResults}} results.</p>
   <p>
     <em>
       {{searchService.searchSummary || "Generating summary..."}}

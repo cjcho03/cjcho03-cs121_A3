@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { SearchService } from '../search.service';
 
 @Component({
   selector: 'app-next-page-button',
@@ -8,4 +9,12 @@ import { Component } from '@angular/core';
 })
 export class NextPageButtonComponent {
 
+  constructor(private searchService: SearchService) {
+
+  }
+
+  nextPage() {
+    if (this.searchService.hasNextPage)
+      this.searchService.nextPage();
+  }
 }
