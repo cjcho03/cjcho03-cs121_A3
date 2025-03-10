@@ -186,3 +186,4 @@ bun.lockb
 
 obj/
 .editorconfig
+bun.lock
