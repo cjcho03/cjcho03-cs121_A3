@@ -24,10 +24,11 @@ interface TitleType {
 type IndexType = Map<string, IndexEntry[]>;
 type DocstoreType = DoubleMap<string, number>;
 type TitleStoreType = Map<number, TitleType>;
+type RankstoreType = Map<string, number>;
 
 const LOW_INFORMATION_DOC_THRESHOLD = 10;
 
-class Index {
+export class Index {
 	id: number;
 	tokens: string[];
 	index: IndexType;
@@ -91,8 +92,8 @@ class Index {
 
 	async saveIndex() {
 		const sortedIndex = Array.from(this.index.entries()).sort((a, b) => {
-			if (a < b) return -1;
-			if (a > b) return 1;
+			if (a[0] < b[0]) return -1;
+			if (a[0] > b[0]) return 1;
 			return 0;
 		});
 
@@ -108,17 +109,21 @@ class Index {
 }
 
 export class IndexRouter {
-	childIndexes: Index[];
+	// childIndexes: Index[];
+	numberOfIndexes: number;
+
 	keys: string[];
 	documentStore: DocstoreType = new DoubleMap();
 	titleStore: TitleStoreType = new Map();
+	pageRankStore: RankstoreType = new Map();
 
 	constructor(numberOfIndexes = 1) {
-		this.childIndexes = [];
+		// this.childIndexes = [];
 		this.keys = [];
-		for (let i = 0; i < numberOfIndexes; ++i) {
-			this.childIndexes.push(new Index(i))
-		}
+		// for (let i = 0; i < numberOfIndexes; ++i) {
+		// 	this.childIndexes.push(new Index(i))
+		// }
+		this.numberOfIndexes = numberOfIndexes;
 	}
 
 	async addDocument(file: BunFile): Promise<void> {
@@ -136,7 +141,9 @@ export class IndexRouter {
 		// Skip if the document is already parsed (in the document store)
 		if (this.documentStore.getOne(documentName)) return;
 		// Tokenize the web page and get the token frequency
-		const tokens = HTMLCleaner.tokenize(HTMLCleaner.clean(documentContent));
+		const cleanHtml = HTMLCleaner.clean(documentContent);
+		const tokens = HTMLCleaner.tokenize(cleanHtml);
+		const outlinks = HTMLCleaner.extractLinks(cleanHtml);
 		// Skip if the document is similar to one already parsed
 		const websiteHash = simhashTokens(tokens.map(token => token.value));
 		if (simhashStore.isDuplicate(websiteHash)) return;
@@ -151,19 +158,30 @@ export class IndexRouter {
 			title: documentTitle,
 			description: documentDescription
 		});
+		// Add the outlinks
+		outlinks.forEach(link => {
+			const parsedLink = URL.parse(link)?.toString();
+			if (parsedLink && isLinkValid(parsedLink)) {
+				const rank = this.pageRankStore.get(parsedLink);
+				if (rank)
+					this.pageRankStore.set(parsedLink, rank + 1);
+				else
+					this.pageRankStore.set(parsedLink, 1);
+			}
+		});
 		// For each token
 		for (const token of tokenFrequencies.keys()) {
 			const frequency = tokenFrequencies.get(token)!;
 			// Create the index entry structure and add it to the appropriate index
-			this.addToken(token, { documentId: documentId, occurrences: frequency });
+			await this.addToken(token, { documentId: documentId, occurrences: frequency });
 		}
 	}
 
-	addToken(token: string, indexEntry: IndexEntry) {
-		const indexChosen = this.chooseInsertionIndex(token);
-		const indexSmallest = this.smallestIndex();
-		const chosenIndex = this.childIndexes[indexChosen];
-		const smallestIndex = this.childIndexes[indexSmallest];
+	async addToken(token: string, indexEntry: IndexEntry) {
+		const indexChosen = await this.chooseInsertionIndex(token);
+		const indexSmallest = await this.smallestIndex();
+		const chosenIndex = await this.openPage(indexChosen);
+		const smallestIndex = await this.openPage(indexSmallest);
 		// Insert into the chosen child
 		chosenIndex.insertToken(token, indexEntry);
 		// Rebalance the tree
@@ -171,22 +189,24 @@ export class IndexRouter {
 		if (chosenIndex.index.size > minLength + 1) {
 			if (indexSmallest < indexChosen) {
 				// If smallestIndex < chosenIndex, redistribute left all from chosen to smallest
-				this.redistributeLeft(indexChosen, indexSmallest);
+				await this.redistributeLeft(indexChosen, indexSmallest);
 
 			}
 			else {
 				// Else, restirbute right
-				this.redistributeRight(indexChosen, indexSmallest);
+				await this.redistributeRight(indexChosen, indexSmallest);
 			}
 		}
+		await chosenIndex.saveIndex();
+		await smallestIndex.saveIndex();
 	}
 
-	private chooseInsertionIndex(token: string) {
+	private async chooseInsertionIndex(token: string) {
 		if (this.keys.length === 0) {
 			sortedInsert(this.keys, token);
 			return this.keys.length;
 		}
-		if (this.keys.length + 1 < this.childIndexes.length) {
+		if (this.keys.length + 1 < this.numberOfIndexes) {
 			let left = 0;
 			let right = this.keys.length;
 
@@ -199,7 +219,7 @@ export class IndexRouter {
 			}
 			if (this.keys[left] === token)
 				return left + 1;
-			this.redistributeRight(left + 1, this.keys.length + 1);
+			await this.redistributeRight(left + 1, this.keys.length + 1);
 			this.keys[left] = token;
 			return left + 1;
 		}
@@ -211,23 +231,23 @@ export class IndexRouter {
 		return indexI;
 	}
 
-	private smallestIndex() {
+	private async smallestIndex() {
 		let minLength = -1;
-		for (let i = 0; i < this.childIndexes.length; ++i) {
-			const index = this.childIndexes[i];
-			if (minLength === -1 || index.index.size < this.childIndexes[minLength].index.size) {
+		for (let i = 0; i < this.numberOfIndexes; ++i) {
+			const index = await this.openPage(i);
+			if (minLength === -1 || index.index.size < (await this.openPage(minLength)).index.size) {
 				minLength = i;
 			}
 		}
 		return minLength;
 	}
 
-	private redistributeLeft(currentIndexI: number, endIndexI: number) {
+	private async redistributeLeft(currentIndexI: number, endIndexI: number) {
 		if (currentIndexI <= endIndexI)
 			return;
 		const nextIndexI = currentIndexI - 1;
-		const currentIndex = this.childIndexes[currentIndexI];
-		const nextIndex = this.childIndexes[nextIndexI];
+		const currentIndex = await this.openPage(currentIndexI);
+		const nextIndex = await this.openPage(nextIndexI);
 		// Remove the smallest token entry from this index and move it to the left one
 		const smallestValueOfCurrent = currentIndex.smallestToken;
 		currentIndex.removeToken(smallestValueOfCurrent.token);
@@ -239,15 +259,17 @@ export class IndexRouter {
 		if (newSmallest)
 			this.keys[nextIndexI] = newSmallest.token;
 		// Continue redistribution
-		this.redistributeLeft(nextIndexI, endIndexI);
+		await currentIndex.saveIndex();
+		await nextIndex.saveIndex();
+		await this.redistributeLeft(nextIndexI, endIndexI);
 	}
 
-	private redistributeRight(currentIndexI: number, endIndexI: number) {
+	private async redistributeRight(currentIndexI: number, endIndexI: number) {
 		if (currentIndexI >= endIndexI)
 			return;
 		const nextIndexI = currentIndexI + 1;
-		const currentIndex = this.childIndexes[currentIndexI];
-		const nextIndex = this.childIndexes[nextIndexI];
+		const currentIndex = await this.openPage(currentIndexI);
+		const nextIndex = await this.openPage(nextIndexI);
 		// Remove the smallest token entry from this index and move it to the left one
 		const largestValueOfCurrent = currentIndex.largestToken;
 		currentIndex.removeToken(largestValueOfCurrent.token);
@@ -259,30 +281,47 @@ export class IndexRouter {
 		if (newSmallest.token)
 			this.keys[currentIndexI] = newSmallest.token;
 		// Continue redistribution
-		this.redistributeRight(nextIndexI, endIndexI);
+		await currentIndex.saveIndex();
+		await nextIndex.saveIndex();
+		await this.redistributeRight(nextIndexI, endIndexI);
 	}
 
 	async saveIndex() {
 		let sum = 0;
-		for (const index of this.childIndexes) {
+		for (let i = 0; i < this.numberOfIndexes; ++i) {
+			const index = await this.openPage(i);
 			sum += await index.saveIndex();
 		}
+
+		const indexFiles = [];
+		for (let i = 0; i < this.numberOfIndexes; ++i) {
+			indexFiles.push(indexFileName(i));
+		}
+
 		sum += await Bun.write("index_dir.json", JSON.stringify({
 			keys: [...this.keys],
-			indexFiles: [...this.childIndexes.map(c => indexFileName(c.id))]
+			indexFiles: indexFiles
 		}));
 
-		sum += await Bun.write("docs.json", JSON.stringify(
-			Object.fromEntries(
-				this.documentStore.mapTwo.keys().map(key => {
-					return [key, {
-						url: this.documentStore.getTwo(key),
-						title: this.titleStore.get(key)?.title,
-						description: this.titleStore.get(key)?.description
-					}]
-				})
-			)
-		));
+		let documents: any = {};
+		for (const key of this.documentStore.mapTwo.keys()) {
+			documents[key] = {
+				url: this.documentStore.getTwo(key),
+				title: this.titleStore.get(key)?.title,
+				description: this.titleStore.get(key)?.description
+			}
+		}
+
+		sum += await Bun.write("docs.json", JSON.stringify(documents));
+
+		const sortedIndex = Array.from(this.pageRankStore.entries()).sort((a, b) => {
+			if (a[1] < b[1]) return -1;
+			if (a[1] > b[1]) return 1;
+			return 0;
+		}).reverse();
+
+		sum += await Bun.write("ranks.json", JSON.stringify(Object.fromEntries(sortedIndex)));
+
 		return sum;
 	}
 
@@ -294,13 +333,22 @@ export class IndexRouter {
 			this.documentStore.set(key, parseInt(value));
 		}
 
-		for (const index of this.childIndexes) {
-			await index.loadIndex();
+		const rankStore = Bun.file("ranks.json");
+		const jsonRanks = await rankStore.json();
+		for (const [key, value] of new Map<string, string>(Object.entries(jsonRanks))) {
+			this.pageRankStore.set(key, parseInt(value));
 		}
+
 
 		const routerFile = Bun.file("index_dir.json");
 		const jsonRouter: DirectoryEntry = await routerFile.json();
 		this.keys = [...jsonRouter.keys];
+	}
+
+	async openPage(pageNumber: number) {
+		const index = new Index(pageNumber);
+		await index.loadIndex();
+		return index;
 	}
 }
 
@@ -396,6 +444,18 @@ function sortedInsert<T>(list: T[], value: T) {
 	}
 
 	list.splice(left, 0, value);
+}
+
+function isLinkValid(link: string) {
+	const invalidExtensionsRegex = /\.(css|js|bmp|gif|jpg|jpeg|png|mp4|mp3|zip|rar|gz|pdf|doc|docx|ppt|pptx|tar|txt)$/i;
+	const permittedDomains = ['ics.uci.edu', 'cs.uci.edu', 'informatics.uci.edu', 'stat.uci.edu'];
+
+	const parsedUrl = new URL(link);
+	const isHttp = parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
+	const isInDomain = permittedDomains.some(domain => parsedUrl.hostname.includes(domain));
+	const isValidExtension = !invalidExtensionsRegex.test(parsedUrl.href.toLowerCase());
+
+	return isHttp && isInDomain && isValidExtension;
 }
 
 function sortedErase<T>(list: T[], value: T) {

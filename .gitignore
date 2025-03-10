@@ -187,3 +187,4 @@ bun.lockb
 obj/
 .editorconfig
 bun.lock
+backend/searchreport

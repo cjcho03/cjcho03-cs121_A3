@@ -6,11 +6,8 @@ import (
 	"github.com/reiver/go-porterstemmer"
 )
 
-// Tokenize splits a string into tokens. (Change logic as needed for your assignment.)
+// Tokenize splits a string into tokens.
 func Tokenize(text string) []string {
-	// Example: split on non-alphabetic or non-numeric.
-	// Adjust to match how your index builder splits tokens!
-	// This is just a placeholder:
 	text = strings.ToLower(text)
 	var tokens []string
 	start := -1

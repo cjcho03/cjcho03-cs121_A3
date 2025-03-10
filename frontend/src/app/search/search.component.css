@@ -1,0 +1,7 @@
+p {
+  width: 90%;
+  min-width: 768px;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 5px rgba(0, 0, 0, 0.15);
+}

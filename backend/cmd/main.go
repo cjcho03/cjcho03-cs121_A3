@@ -1,19 +1,17 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
 	"log"
+	"net/http"
 	"os"
-	"strings"
-	"time"
 
+	"backend/handlers"
 	"backend/index_loader"
 	"backend/search"
 )
 
 func main() {
-	// 1) Load docs.json and index_dir.json
+	// 1) Load docs and index directory.
 	docs, err := index_loader.LoadDocs("indexdir/docs.json")
 	if err != nil {
 		log.Fatalf("Error loading docs: %v", err)
@@ -23,40 +21,16 @@ func main() {
 		log.Fatalf("Error loading index directory: %v", err)
 	}
 
-	// 2) Initialize the search module
+	// 2) Initialize the search module with docs as DocEntry objects.
 	search.SetDataPartitioned(docs, len(docs), idxDir)
 
-	// 3) Interactive loop to read queries from stdin
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("Enter query (or 'exit'): ")
-		line, _ := reader.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if line == "exit" {
-			break
-		}
+	// 3) Register a single endpoint at /search.
+	http.HandleFunc("/search", handlers.SearchHandler)
 
-		// Measure how long the query takes
-		start := time.Now()
-
-		results := search.ProcessQuery(line)
-
-		elapsed := time.Since(start) // end time
-
-		// Print results
-		if len(results) == 0 {
-			fmt.Println("No results found.")
-		} else {
-			for i, r := range results {
-				fmt.Printf("%d. URL: %s (Score: %.4f)\n", i+1, r.URL, r.Score)
-			}
-		}
-
-		// Print query time in milliseconds
-		fmt.Printf("Query time: %.2fms\n", float64(elapsed.Microseconds())/1000.0)
-		fmt.Println("---------------")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
+	log.Printf("Listening on port %s...", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

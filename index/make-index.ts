@@ -11,8 +11,6 @@ if (!Bun.argv.includes("--restart"))
 // Retrieve the websites
 const websites = await getWebsites();
 // Add a website to the index
-// for (let i = 0; i < 10; ++i) {
-// const website = websites[i];
 for (const website of websites) {
 	await index.addDocument(website);
 }
@@ -22,7 +20,7 @@ await index.saveIndex();
 // 2. Number of unique words
 // 3. Total size of the index on disk (kB)
 console.log(`Indexed documents: ${reporter.numberOfIndexedDocuments()}`);
-console.log(`Unique words: ${reporter.numberOfUniqueWords()}`);
+console.log(`Unique words: ${await reporter.numberOfUniqueWords()}`);
 console.log(`Index size: ${await reporter.sizeOfIndex()} kB`);
 // 1. 55393
 // 2. 270274

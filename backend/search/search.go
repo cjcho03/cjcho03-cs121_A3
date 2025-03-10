@@ -3,78 +3,119 @@ package search
 import (
 	"math"
 	"sort"
-	"sync"
 
 	"backend/index_loader"
 	"backend/utils"
 )
 
 var (
-	DocIDToURLPartitioned map[int]string
-	TotalDocsPartitioned  int
-	IndexDirData          *index_loader.IndexDir
+	DocIDToDocEntryPartitioned map[int]index_loader.DocEntry
+	TotalDocsPartitioned       int
+	IndexDirData               *index_loader.IndexDir
 
+	// Cache mapping index file names to IndexMap.
 	indexCache = make(map[string]index_loader.IndexMap)
-	cacheMutex sync.Mutex
+	// Cache mapping token directly to its postings.
+	tokenCache = make(map[string][]index_loader.Posting)
+	// Cache computed idf values.
+	idfCache = make(map[string]float64)
 )
 
-// SetDataPartitioned initializes the search module with docs, doc count, and index directory.
-func SetDataPartitioned(docs map[int]string, total int, dir *index_loader.IndexDir) {
-	DocIDToURLPartitioned = docs
-	TotalDocsPartitioned = total
-	IndexDirData = dir
+// A list of common stopwords and frequent tokens to preload.
+var frequentTokens = []string{
+	// Common English stopwords.
+	"i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
+	"yours", "yourself", "yourselves", "he", "him", "his", "himself", "she",
+	"her", "hers", "herself", "it", "its", "itself", "they", "them", "their",
+	"theirs", "themselves", "what", "which", "who", "whom", "this", "that",
+	"these", "those", "am", "is", "are", "was", "were", "be", "been", "being",
+	"have", "has", "had", "having", "do", "does", "did", "doing", "a", "an",
+	"the", "and", "but", "if", "or", "because", "as", "until", "while", "of",
+	"at", "by", "for", "with", "about", "against", "between", "into", "through",
+	"during", "before", "after", "above", "below", "to", "from", "up", "down",
+	"in", "out", "on", "off", "over", "under", "again", "further", "then",
+	"once", "here", "there", "when", "where", "why", "how", "all", "any",
+	"both", "each", "few", "more", "most", "other", "some", "such", "no", "nor",
+	"not", "only", "own", "same", "so", "than", "too", "very", "can",
+	"will", "just", "don", "should", "now",
+	// Domain-specific and additional tokens.
+	"computer", "science", "software", "engineering", "university", "major", "degree", "bachelor", "master", "phd",
+	"course", "class", "lecture", "lab", "assignment", "homework", "exam", "quiz", "project", "research", "paper",
 }
 
-// getPostingsForToken loads/returns postings for a given token.
+// PreloadFrequentTokens forces the loading of a given list of tokens into the cache.
+// It calls getPostingsForToken for each token.
+func PreloadFrequentTokens(tokens []string) {
+	for _, token := range tokens {
+		getPostingsForToken(token)
+	}
+}
+
+// SetDataPartitioned initializes the search module with document entries, document count,
+// and the index directory. It also preloads a selected set of tokens (including stopwords).
+func SetDataPartitioned(docs map[int]index_loader.DocEntry, total int, dir *index_loader.IndexDir) {
+	DocIDToDocEntryPartitioned = docs
+	TotalDocsPartitioned = total
+	IndexDirData = dir
+	PreloadFrequentTokens(frequentTokens)
+}
+
+// getPostingsForToken returns the postings for a given token.
+// It first checks the tokenCache and, if missing, loads the appropriate index file.
 func getPostingsForToken(token string) ([]index_loader.Posting, bool) {
+	// Check tokenCache first.
+	if postings, ok := tokenCache[token]; ok {
+		return postings, true
+	}
+
 	if IndexDirData == nil {
-		// Return false if not initialized
 		return nil, false
 	}
 
+	// Determine the index file based on the token.
 	filename := index_loader.GetIndexFileForToken(token, IndexDirData)
 
-	cacheMutex.Lock()
+	// Look up the index from the cache.
 	idx, found := indexCache[filename]
-	cacheMutex.Unlock()
-
 	if !found {
 		loadedIdx, err := index_loader.LoadIndex(filename)
 		if err != nil {
-			// If there's an error loading the file, return false
 			return nil, false
 		}
-		cacheMutex.Lock()
 		indexCache[filename] = loadedIdx
-		cacheMutex.Unlock()
 		idx = loadedIdx
 	}
 
 	postings, ok := idx[token]
+	if ok {
+		// Cache the token's postings for future queries.
+		tokenCache[token] = postings
+	}
 	return postings, ok
 }
 
-// Result represents the final doc result with a score.
+// Result represents the final document result with a URL, title, description, and a score.
 type Result struct {
-	URL   string  `json:"url"`
-	Score float64 `json:"score"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Score       float64 `json:"score"`
 }
 
-// ProcessQuery runs a Boolean AND on all tokens, then ranks docs using tf-idf.
+// ProcessQuery tokenizes, stems, performs a Boolean AND, computes tf-idf weights,
+// and returns the top results.
 func ProcessQuery(query string) []Result {
 	if IndexDirData == nil {
-		// Not initialized, return nothing
 		return nil
 	}
 
-	// 1) Tokenize
+	// 1) Tokenize.
 	rawTokens := utils.Tokenize(query)
 	if len(rawTokens) == 0 {
-		// No tokens after tokenization
 		return nil
 	}
 
-	// 2) Stem
+	// 2) Stem and count token frequency.
 	queryFreq := make(map[string]int)
 	var queryTokens []string
 	for _, raw := range rawTokens {
@@ -83,12 +124,12 @@ func ProcessQuery(query string) []Result {
 		queryFreq[stemmed]++
 	}
 
-	// 3) Boolean AND across tokens
+	// 3) Boolean AND (intersection) across tokens.
 	docScores := make(map[int]map[string]int)
 	for i, token := range queryTokens {
 		postings, found := getPostingsForToken(token)
 		if !found || len(postings) == 0 {
-			// If any token yields no docs, final result is empty
+			// If any token yields no documents, return an empty result.
 			return []Result{}
 		}
 
@@ -118,30 +159,35 @@ func ProcessQuery(query string) []Result {
 	}
 
 	if len(docScores) == 0 {
-		// No docs remain after intersection
 		return []Result{}
 	}
 
-	// 4) Build query vector (tf-idf)
+	// 4) Build query vector (tf-idf) and compute IDF from cache.
 	queryVec := make(map[string]float64)
 	for token, freq := range queryFreq {
-		postings, _ := getPostingsForToken(token)
-		df := len(postings)
-		if df == 0 {
-			continue
+		var idf float64
+		if cached, ok := idfCache[token]; ok {
+			idf = cached
+		} else {
+			postings, _ := getPostingsForToken(token)
+			df := len(postings)
+			if df == 0 {
+				continue
+			}
+			idf = math.Log(float64(TotalDocsPartitioned) / float64(df))
+			idfCache[token] = idf
 		}
-		idf := math.Log(float64(TotalDocsPartitioned) / float64(df))
 		queryVec[token] = float64(freq) * idf
 	}
 
-	// 5) Query vector norm
+	// 5) Compute the norm of the query vector.
 	var queryNorm float64
 	for _, weight := range queryVec {
 		queryNorm += weight * weight
 	}
 	queryNorm = math.Sqrt(queryNorm)
 
-	// 6) Compute doc scores
+	// 6) Compute document scores.
 	var results []Result
 	for docID, freqs := range docScores {
 		var dot, docNorm float64
@@ -151,33 +197,45 @@ func ProcessQuery(query string) []Result {
 			if df == 0 {
 				continue
 			}
-			idf := math.Log(float64(TotalDocsPartitioned) / float64(df))
+			var idf float64
+			if cached, ok := idfCache[token]; ok {
+				idf = cached
+			} else {
+				idf = math.Log(float64(TotalDocsPartitioned) / float64(df))
+				idfCache[token] = idf
+			}
 			docWeight := float64(tf) * idf
-			queryWeight := queryVec[token]
-			dot += docWeight * queryWeight
-			docNorm += (docWeight * docWeight)
+			dot += docWeight * queryVec[token]
+			docNorm += docWeight * docWeight
 		}
 		docNorm = math.Sqrt(docNorm)
 
 		var score float64
 		if queryNorm != 0 && docNorm != 0 {
-			score = dot / (queryNorm * docNorm)
+			score = dot
 		}
 
 		results = append(results, Result{
-			URL:   DocIDToURLPartitioned[docID],
-			Score: score,
+			URL:         DocIDToDocEntryPartitioned[docID].URL,
+			Title:       DocIDToDocEntryPartitioned[docID].Title,
+			Description: DocIDToDocEntryPartitioned[docID].Description,
+			Score:       score,
 		})
 	}
 
-	// 7) Sort descending by score
+	// 7) Sort the results in descending order by score.
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+		rankI, _ := index_loader.GetRank(results[i].URL)
+    	rankJ, _ := index_loader.GetRank(results[j].URL)
+		if rankI != rankJ {
+			return rankI > rankJ
+		}
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+	
+		return results[i].URL < results[j].URL
 	})
 
-	// 8) Return top 5
-	if len(results) > 5 {
-		results = results[:5]
-	}
 	return results
 }

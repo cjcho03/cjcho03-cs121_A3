@@ -1,9 +1,16 @@
-content {
+a {
   display: block;
-  padding: 1.5rem;
-  margin: 1rem 0;
   width: 80%;
-  min-width: 768px; 
+  min-width: 768px;
+  text-decoration: none;
+  color: inherit;
+}
+
+section {
+  display: block;
+  padding: 1rem;
+  margin: 1rem 0;
+
   background-color: #f8f9fa;
   border-radius: 8px;
   box-shadow: 0 4px 5px rgba(0, 0, 0, 0.15);
@@ -14,17 +21,17 @@ content {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   }
 
-  content h2 {
-    margin-top: 0;
-    margin-bottom: 0.75rem;
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #343a40;
-  }
+h2 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #343a40;
+}
 
-  content p {
-    margin-bottom: 0;
-    font-size: 1rem;
-    line-height: 1.6;
-    color: #495057;
-  }
+p {
+  margin-bottom: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #495057;
+}
