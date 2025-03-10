@@ -19,5 +19,5 @@ Shindler Seminar
 Professor Epstein
 Professor Eppstein
 
+Queries that had a high query time were ones with a large number of tokens, or ones that occurred many times in documents.
 Queries that had a high query time were optimized by preprocessing and caching some of these tokens which are stopwords or common within the domain.
- 
