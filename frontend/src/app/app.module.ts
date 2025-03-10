@@ -9,6 +9,7 @@ import { SearchComponent } from './search/search.component';
 import { SearchBarComponent } from './search-bar/search-bar.component';
 import { SearchResultComponent } from './search-result/search-result.component';
 import { provideHttpClient } from '@angular/common/http';
+import { NextPageButtonComponent } from './next-page-button/next-page-button.component';
 
 @NgModule({
   declarations: [
@@ -16,7 +17,8 @@ import { provideHttpClient } from '@angular/common/http';
     HomeComponent,
     SearchComponent,
     SearchBarComponent,
-    SearchResultComponent
+    SearchResultComponent,
+    NextPageButtonComponent
   ],
   imports: [
     BrowserModule,

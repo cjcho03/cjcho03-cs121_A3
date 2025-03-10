@@ -1,9 +1,20 @@
 <app-search-bar></app-search-bar>
-<p>
-  <em>
-    {{searchService.searchSummary || "Generating summary..."}}
-  </em>
-</p>
-@for(searchResult of searchService.searchResults; track searchResult) {
-<app-search-result [searchResult]="searchResult"></app-search-result>
+@if(searchService.searchResults.length > 0) {
+  <p>
+    <em>
+      {{searchService.searchSummary || "Generating summary..."}}
+    </em>
+  </p>
+  @for(searchResult of searchService.searchResults; track searchResult) {
+  <app-search-result [searchResult]="searchResult"></app-search-result>
+  }
+}
+@else {
+  <p>No search results.</p>
+}
+<!--prev-page-->
+<!--for numberofpages pagebutton-->
+<!--next-page-->
+@if(searchService.hasNextPage) {
+<app-next-page-button></app-next-page-button>
 }
