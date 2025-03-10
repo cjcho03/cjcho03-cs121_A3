@@ -212,7 +212,7 @@ func ProcessQuery(query string) []Result {
 
 		var score float64
 		if queryNorm != 0 && docNorm != 0 {
-			score = dot / (queryNorm * docNorm)
+			score = dot
 		}
 
 		results = append(results, Result{
@@ -225,11 +225,16 @@ func ProcessQuery(query string) []Result {
 
 	// 7) Sort the results in descending order by score.
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].Score == results[j].Score {
-			// Secondary sort by URL for tie-breaking.
-			return results[i].URL < results[j].URL
+		rankI, _ := index_loader.GetRank(results[i].URL)
+    	rankJ, _ := index_loader.GetRank(results[j].URL)
+		if rankI != rankJ {
+			return rankI > rankJ
 		}
-		return results[i].Score > results[j].Score
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+	
+		return results[i].URL < results[j].URL
 	})
 
 	return results

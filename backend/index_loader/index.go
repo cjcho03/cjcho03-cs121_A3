@@ -94,3 +94,21 @@ func GetIndexFileForToken(token string, dir *IndexDir) string {
 	// token >= all keys => last file
 	return "indexdir/" + dir.IndexFiles[len(dir.IndexFiles)-1]
 }
+
+func GetRank(Url string) (int, error) {
+	data, err := os.ReadFile("indexdir/ranks.json")
+	if err != nil {
+		return 0, err
+	}
+
+	result := make(map[string]int)
+	if err := json.Unmarshal(data, &result); err != nil {
+		return 0, err
+	}
+
+	if value, found := result[Url]; found {
+		return value, nil
+	}
+
+	return 1, nil
+}
