@@ -447,7 +447,7 @@ function sortedInsert<T>(list: T[], value: T) {
 }
 
 function isLinkValid(link: string) {
-	const invalidExtensionsRegex = /\.(css|js|bmp|gif|jpg|jpeg|png|mp4|mp3|zip|rar|gz|pdf|doc|docx|ppt|pptx|tar)$/i;
+	const invalidExtensionsRegex = /\.(css|js|bmp|gif|jpg|jpeg|png|mp4|mp3|zip|rar|gz|pdf|doc|docx|ppt|pptx|tar|txt)$/i;
 	const permittedDomains = ['ics.uci.edu', 'cs.uci.edu', 'informatics.uci.edu', 'stat.uci.edu'];
 
 	const parsedUrl = new URL(link);
